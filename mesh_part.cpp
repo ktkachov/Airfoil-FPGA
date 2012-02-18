@@ -39,6 +39,7 @@ typedef struct graph_struct {
 } ugraph;
 
 int elem(int*, int, int);
+void colourGraph(ugraph*);
 
 ugraph* generateGraph(int* npart, int* edges, int len, int num_parts) {
   
@@ -67,6 +68,9 @@ ugraph* generateGraph(int* npart, int* edges, int len, int num_parts) {
 }
 
 void toDotColoured(ugraph* g, const char* fileName) {
+  if (g->colours == NULL) {
+    colourGraph(g);  
+  }
   printf("Generating coloured .dot graph in %s\n", fileName);
   FILE* fp = fopen(fileName, "w");
   fprintf(fp, "graph coloured_mesh {\n");
