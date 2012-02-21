@@ -6,8 +6,8 @@
 #include "metis.h"
 
 #define EDGES_PER_PARTITION 80000
-#define NODES_PER_PARTITION 40000
-#define CELLS_PER_PARTITION 40000
+#define NODES_PER_PARTITION (EDGES_PER_PARTITION / 2)
+#define CELLS_PER_PARTITION (EDGES_PER_PARTITION / 2)
 
 double gam;
 double gm1;
@@ -75,7 +75,6 @@ void toDotColoured(ugraph* g, const char* fileName) {
   FILE* fp = fopen(fileName, "w");
   fprintf(fp, "graph coloured_mesh {\n");
   for (int i = 0; i < g->num_nodes; ++i) {
-    printf("Node %d has colour %d\n", i, g->colours[i]);
     fprintf(fp, "%d[color=\"%s\"];\n", i, colourNames[g->colours[i]]);
   }
   for (int i = 0; i < g->num_nodes; ++i) {
@@ -89,6 +88,10 @@ void toDotColoured(ugraph* g, const char* fileName) {
   fclose(fp);
 }
 
+
+/*
+  Greedy colouring algorithm
+*/
 void colourGraph(ugraph* graph) {
   int nv = graph->num_nodes; //Number of vertices, also maximum colours
   int* colours = (int*)malloc(graph->num_nodes * sizeof(int));
@@ -193,10 +196,33 @@ void generateDotGraph(int* npart, int* edges, int len, int num_parts, const char
   fclose(fp);
 }
 
+int majority(int* arr, int len) {
+  int* temp = (int*)malloc(len * sizeof(int));
+  memcpy(temp, arr, len* sizeof(int));
+  int tempLen = removeDups(temp, len);
+  int* occ = (int*)malloc(tempLen * sizeof(int));
+  for (int i = 0; i < tempLen; ++i) {
+    for (int j = 0; j < len; ++j) {
+      if (arr[j] == temp[i]) {
+        ++occ[i];
+      }
+    }
+  }
+  int max = -1;
+  for (int i = 0; i < tempLen; ++i) {
+    max = temp[i] > max ? temp[i] : max;
+  }
+  free(occ);
+  free(temp);
+  return max;
+}
+
 typedef struct partition_struct {
   int* edges;
   int* cells;
   int* nodes;
+  int* enodes;
+  int* ecells;
   int nedges;
   int ncells;
   int nnodes;
@@ -344,12 +370,16 @@ int main(int argc, char* argv[]) {
     ps[i].edges = (int*)malloc(EDGES_PER_PARTITION * sizeof(int));
     ps[i].nodes = (int*)malloc(NODES_PER_PARTITION * sizeof(int));
     ps[i].cells = (int*)malloc(CELLS_PER_PARTITION * sizeof(int));
+    ps[i].enodes = (int*)malloc(EDGES_PER_PARTITION * 2 * sizeof(int));
+    ps[i].ecells = (int*)malloc(EDGES_PER_PARTITION * 2 * sizeof(int));
   }
   for (int i = 0; i < ne; ++i) {
     int n = epart[i]; // n is partition number
     if(ps[n].nedges == ps[n].max_edges) {
       ps[n].max_edges += 64;
       ps[n].edges = (int*)realloc(ps[n].edges, ps[n].max_edges * sizeof(int));
+      ps[n].enodes = (int*)realloc(ps[n].enodes, ps[n].max_edges * 2 * sizeof(int));
+      ps[n].ecells = (int*)realloc(ps[n].ecells, ps[n].max_edges * 2 * sizeof(int));
     }
     ps[n].edges[ps[n].nedges++] = i;
   }
@@ -368,12 +398,18 @@ int main(int argc, char* argv[]) {
 
   printf("Assigned nodes to partitions\n");
 
+  for (int i = 0; i < num_parts; ++i) {
+    for (int j = 0; j < ps[i].nedges; ++j) {
+      ps[i].enodes[2*j] = edge[ps[i].edges[j]];
+      ps[i].enodes[2*j+1] = edge[ps[i].edges[j]+1];
+    }
+  }
+
+  printf("Assigned edge-to-node maps to partitions\n");
+
   for (int i = 0; i < ncell; ++i) {
     for (int j = 0; j < 4; ++j) {
       int edge = cellse[4*i+j];
-      if (edge > nedge) {
-        printf("ERROR! Edge %d\n", edge);
-      }
       int part = epart[edge];
       if (ps[part].ncells == ps[part].max_cells) {
         ps[part].max_cells += 64;
@@ -382,6 +418,20 @@ int main(int argc, char* argv[]) {
       ps[part].cells[ps[part].ncells++] = i;
     }
   }
+
+  
+  printf("Assigned cells to partitions\n");
+
+
+  for (int i = 0; i < num_parts; ++i) {
+    for (int j = 0; j < ps[i].nedges; ++j) {
+      ps[i].ecells[2*j] = ecell[ps[i].edges[j]];
+      ps[i].ecells[2*j+1] = ecell[ps[i].edges[j]+1];
+    }
+  }
+  
+  printf("Assigned edge-to-cell maps to partitions\n");
+
 /*
   for (int i = 0; i < nedge*2; i+=2) {
     int n = epart[i/2];
@@ -395,18 +445,13 @@ int main(int argc, char* argv[]) {
 */
   //Clean up and remove duplicates
   for (int i = 0; i < num_parts; ++i) {
-    printf("Nodes before in partition %d: %d\n", i, ps[i].nnodes);
     ps[i].nnodes = removeDups(ps[i].nodes, ps[i].nnodes);
     ps[i].nodes = (int*)realloc(ps[i].nodes, ps[i].nnodes * sizeof(int));
-    printf("Nodes after in partition %d: %d\n", i, ps[i].nnodes);
 
-    printf("Cells before in partition %d: %d\n",i,ps[i].ncells);
     ps[i].ncells = removeDups(ps[i].cells, ps[i].ncells);
     ps[i].cells = (int*)realloc(ps[i].cells, ps[i].ncells * sizeof(int));
-    printf("Cells after in partition %d: %d\n", i, ps[i].ncells);
   }
 
-  printf("Assigned cells to partitions\n");
 
 
   int part_nodes = 0;
