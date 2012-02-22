@@ -237,7 +237,7 @@ int main(int argc, char **argv){
   }
 
   niter = 1000;
-  printf("Before giant for loop\n");
+//   printf("Before giant for loop\n");
 
   clock_t start, end;
   start = clock();
