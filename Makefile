@@ -8,7 +8,7 @@ airfoil: airfoil.cpp
 	g++ -O3 -o airfoil airfoil.cpp
 
 mesh: mesh_part.c
-	$(CC) -o mesh $(CCFLAGS) $(CCINC) $(LDINC) mesh_part.c $(LDFLAGS)
+	$(CC) -o mesh $(CCFLAGS) $(CCINC) $(LDINC) $< $(LDFLAGS)
 
 clean:
 	rm -f mesh
