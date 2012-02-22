@@ -1,6 +1,5 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
 #include <math.h>
 #include <time.h>
 #include "metis.h"
@@ -9,13 +8,7 @@
 #define NODES_PER_PARTITION (EDGES_PER_PARTITION / 2)
 #define CELLS_PER_PARTITION (EDGES_PER_PARTITION / 2)
 
-double gam;
-double gm1;
-double cfl;
-double eps;
-double qinf[4];
-
-const char* colourNames[20] = {
+const char* colourNames[] = {
   "aqua",
   "olive",
   "red",
@@ -236,26 +229,6 @@ void generateDotGraph(int* npart, int* edges, int len, int num_parts, const char
   fclose(fp);
 }
 
-int majority(int* arr, int len) {
-  int* temp = malloc(len * sizeof(*temp));
-  memcpy(temp, arr, len* sizeof(*temp));
-  int tempLen = removeDups(temp, len);
-  int* occ = (int*)malloc(tempLen * sizeof(*occ));
-  for (int i = 0; i < tempLen; ++i) {
-    for (int j = 0; j < len; ++j) {
-      if (arr[j] == temp[i]) {
-        ++occ[i];
-      }
-    }
-  }
-  int max = -1;
-  for (int i = 0; i < tempLen; ++i) {
-    max = temp[i] > max ? temp[i] : max;
-  }
-  free(occ);
-  free(temp);
-  return max;
-}
 
 void showGraph(ugraph* g) {
   for (int i = 0; i < g->num_nodes; ++i) {
@@ -286,11 +259,9 @@ int main(int argc, char* argv[]) {
   int *becell, *ecell, *bound, *bedge, *edge, *cell;
   double *x, *q, *qold, *adt, *res;
 
-  int nnode,ncell,nedge,nbedge,niter;
-  double rms;
+  int nnode,ncell,nedge,nbedge;
   
   //timer
-  double cpu_t1, cpu_t2, wall_t1, wall_t2;
 
   // read in grid
 
@@ -350,35 +321,6 @@ int main(int argc, char* argv[]) {
 
   fclose(fp);
 
-  // set constants and initialise flow field and residual
-  gam = 1.4f;
-  gm1 = gam - 1.0f;
-  cfl = 0.9f;
-  eps = 0.05f;
-
-
-  double mach = 0.4f;
-  double alpha = 3.0f*atan(1.0f)/45.0f;
-  double p = 1.0f;
-  double r = 1.0f;
-  double u = sqrt(gam*p/r)*mach;
-  double e = p/(r*gm1) + 0.5f*u*u;
-
-  qinf[0] = r;
-  qinf[1] = r*u;
-  qinf[2] = 0.0f;
-  qinf[3] = r*e;
-
-  for (int n=0; n<ncell; n++) {
-    for (int m=0; m<4; m++) {
-        q[4*n+m] = qinf[m];
-      res[4*n+m] = 0.0f;
-      
-    }
-  }
-
-  niter = 1000;
-//   printf("Before giant for loop\n");
 
 /*Populate the cells to edges map*/
   for (int i = 0; i < nedge; ++i) {
@@ -407,7 +349,7 @@ int main(int argc, char* argv[]) {
   //options[METIS_OPTION_NUMBERING] = 0;
   int nn = nnode;
   int nc = ncell;
-  printf("About to start partitioning %d cells in %d partitions\n", ncell, num_parts);
+  printf("Partitioning %d cells in %d partitions\n", ncell, num_parts);
   METIS_PartMeshNodal(&nc, &nn, cptr, cell, NULL, NULL, &num_parts, NULL, /*options*/NULL, &objval, cpart, npart);
 
   partition* ps = (partition*)malloc(num_parts * sizeof(partition));
@@ -444,18 +386,6 @@ int main(int argc, char* argv[]) {
 
   for (int i = 0; i < ncell; ++i) {
     int n = cpart[i]; // n is partition number
-/*
-    if(ps[n].nedges > ps[n].max_edges - 4) {
-      ps[n].max_edges += 128;
-      ps[n].edges = realloc(ps[n].edges, ps[n].max_edges * sizeof(*ps[n].edges));
-      ps[n].enodes = realloc(ps[n].enodes, ps[n].max_edges * 2 * sizeof(*ps[n].enodes));
-      ps[n].ecells = realloc(ps[n].ecells, ps[n].max_edges * 2 * sizeof(*ps[n].ecells));
-    }
-    ps[n].edges[ps[n].nedges++] = cellse[4*i];
-    ps[n].edges[ps[n].nedges++] = cellse[4*i+1];
-    ps[n].edges[ps[n].nedges++] = cellse[4*i+2];
-    ps[n].edges[ps[n].nedges++] = cellse[4*i+3];
-  */  
     if (ps[n].ncells == ps[n].max_cells - 1) {
       ps[n].max_cells += 128;
       ps[n].cells = realloc(ps[n].cells, ps[n].max_cells * sizeof(*ps[n].cells));
@@ -566,34 +496,15 @@ int main(int argc, char* argv[]) {
     part_edges += ps[i].nedges;
     printf("partition %d has: %d edges, %d nodes, %d cells\n", i, ps[i].nedges, ps[i].nnodes, ps[i].ncells);
   }
-/*
-  for (int i = 0; i < num_parts; ++i) {
-    printf("printing partition %d of %d\n", i, num_parts);
-    for (int j = 0; j < ps[i].nedges; ++j) {
-      printf("%d\n", ps[i].edges[j]);
-    }
-    printf("----------------------------------\n");
-  }
-*/
-/*
-  for (int i = 0; i < nedge; ++i) {
-    printf("%d\n", epart[i]);
-  }
- */
-/*
-  for (int i = 0; i < nnode; ++i) {
-    printf("%d\n", npart[i]);
-  }
-*/
 //  ugraph* partitionGraph = generateGraph(npart, edge, nedge*2, num_parts);
-  printf("About to generate partition graph\n");
+  printf("Generating partition graph\n");
   ugraph* partitionGraph = generateGraphCells(npart, cell, ncell, num_parts);
   if (partitionGraph == NULL) {
     printf("ERROR! partition graph is NULL!\n");
     return 1;
   }
   showGraph(partitionGraph);
-  printf("About to colour partition graph\n");
+  printf("Colouring partition graph\n");
   colourGraph(partitionGraph);
   toDotColoured(partitionGraph, "meshColoured.dot");
 //  generateDotGraph(npart, edge, nedge*2, num_parts, "mesh.dot");
