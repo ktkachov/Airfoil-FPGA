@@ -38,33 +38,7 @@ int min(int, int);
 int max(int, int);
 void showGraph(ugraph*);
 
-ugraph* generateGraph(int* npart, int* edges, int len, int num_parts) {
-  
-  int** adj_list =  malloc(num_parts * sizeof(*adj_list));
-  int* adj_sizes =  calloc(sizeof(int), num_parts);
-  for (int i = 0; i < num_parts; ++i) {
-    adj_list[i] =  malloc(num_parts * sizeof(**adj_list));
-  }
-  for (int i = 0; i < len; ++i) {
-    int part1 = npart[edges[2*i]];
-    int part2 = npart[edges[2*i+1]];
-    if (part1 != part2) {
-      if (!elem(adj_list[part1], adj_sizes[part1], part2)) {
-        adj_list[part1][adj_sizes[part1]++] = part2;
-      }
-      if (!elem(adj_list[part2], adj_sizes[part2], part1)) {
-        adj_list[part2][adj_sizes[part2]++] = part1;
-      }
-    }
-  }
-  ugraph* res = (ugraph*)malloc(sizeof(ugraph));
-  res->adj_list = adj_list;
-  res->adj_sizes = adj_sizes;
-  res->num_nodes = num_parts;
-  return res;
-}
-
-ugraph* generateGraphCells(int* npart, int* cells, int len, int num_parts) {
+ugraph* generateGraphCells(int* npart, int* map, int dim, int len, int num_parts) {
   int** adj_list = malloc(num_parts * sizeof(*adj_list));
   if (!adj_list) {
     fprintf(stderr, "ERROR! could not allocate memory for adjacency list\n");
@@ -74,12 +48,12 @@ ugraph* generateGraphCells(int* npart, int* cells, int len, int num_parts) {
     adj_list[i] = malloc(num_parts * sizeof(**adj_list));
   } 
   for (int i = 0; i < len; ++i) {
-    int p[4];
-    for (int j = 0; j < 4; ++j) {
-      p[j] = npart[cells[4*i+j]];
+    int p[dim];
+    for (int j = 0; j < dim; ++j) {
+      p[j] = npart[map[dim*i+j]];
     }
-    for (int j = 0; j < 4; ++j) {
-      for (int k = 0; k < 4; ++k) {
+    for (int j = 0; j < dim; ++j) {
+      for (int k = 0; k < dim; ++k) {
         if (p[j] != p[k] && !elem(adj_list[p[j]], adj_sizes[p[j]], p[k])) {
           adj_list[p[j]][adj_sizes[p[j]]++] = p[k];
         }
@@ -486,7 +460,7 @@ int main(int argc, char* argv[]) {
   }
 //  ugraph* partitionGraph = generateGraph(npart, edge, nedge*2, num_parts);
   printf("Generating partition graph\n");
-  ugraph* partitionGraph = generateGraphCells(npart, cell, ncell, num_parts);
+  ugraph* partitionGraph = generateGraphCells(npart, cell, 4, ncell, num_parts);
   if (!partitionGraph) {
     printf("ERROR! partition graph is NULL!\n");
     return 1;
