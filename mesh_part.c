@@ -72,11 +72,7 @@ ugraph* generateGraphCells(int* npart, int* cells, int len, int num_parts) {
   int* adj_sizes = calloc(sizeof(*adj_sizes), num_parts);
   for (int i = 0; i < num_parts; ++i) {
     adj_list[i] = malloc(num_parts * sizeof(**adj_list));
-  }
-  for (int i = 0; i < num_parts; ++i) {
-    adj_sizes[i] = 0;
-  }
-  
+  } 
   for (int i = 0; i < len; ++i) {
     int p[4];
     for (int j = 0; j < 4; ++j) {
@@ -85,8 +81,7 @@ ugraph* generateGraphCells(int* npart, int* cells, int len, int num_parts) {
     for (int j = 0; j < 4; ++j) {
       for (int k = 0; k < 4; ++k) {
         if (p[j] != p[k] && !elem(adj_list[p[j]], adj_sizes[p[j]], p[k])) {
-          adj_list[p[j]][adj_sizes[p[j]]] = p[k];
-          ++adj_sizes[p[j]];
+          adj_list[p[j]][adj_sizes[p[j]]++] = p[k];
         }
       }
     }
@@ -125,7 +120,7 @@ void toDotColoured(ugraph* g, const char* fileName) {
 */
 void colourGraph(ugraph* graph) {
   int nv = graph->num_nodes; //Number of vertices, also maximum colours
-  int* colours = (int*)malloc(graph->num_nodes * sizeof(*colours));
+  int* colours = malloc(graph->num_nodes * sizeof(*colours));
   for (int i = 0; i < nv; ++i) {
     colours[i] = -1;
   }
@@ -166,9 +161,9 @@ inline void print_array(double* data, int len, const char* file_name) {
 int removeDups(int* arr, int len) {
   int i, j;
   j = 0; 
-  for (i = 1; i < len; i++) {
+  for (i = 1; i < len; ++i) {
     if (arr[i] != arr[j]) {
-      j++;
+      ++j;
       arr[j] = arr[i];
     }
   }
@@ -200,7 +195,7 @@ void generateDotGraph(int* npart, int* edges, int len, int num_parts, const char
   int** adj_list =  malloc(num_parts * sizeof(*adj_list));
   int* adj_sizes =  calloc(sizeof(*adj_sizes), num_parts);
   for (int i = 0; i < num_parts; ++i) {
-    adj_list[i] = malloc(num_parts * sizeof(num_parts));
+    adj_list[i] = malloc(num_parts * sizeof(**adj_list));
   }
   for (int i = 0; i < len; ++i) {
     int part1 = npart[edges[2*i]];
@@ -215,7 +210,7 @@ void generateDotGraph(int* npart, int* edges, int len, int num_parts, const char
   }
   for (int i = 0; i < num_parts; ++i) {
     for (int j = 0; j < adj_sizes[i]; ++j) {
-      fprintf(fp, "%d -- %d;\n", i, adj_list[i][j]);
+      fprintf(fp, "\t%d -- %d;\n", i, adj_list[i][j]);
     }
   }
   for (int i = 0; i < num_parts; ++i) {
@@ -259,12 +254,9 @@ int main(int argc, char* argv[]) {
 
   int nnode,ncell,nedge,nbedge;
   
-  //timer
-
   // read in grid
 
   printf("reading in grid \n");
-
   FILE *fp;
   if ( (fp = fopen("./new_grid.dat","r")) == NULL) { ///new_grid.dat
     printf("can't open file new_grid.dat\n"); exit(-1);
