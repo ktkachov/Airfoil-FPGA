@@ -82,13 +82,11 @@ ugraph* generateGraphCells(int* npart, int* cells, int len, int num_parts) {
     for (int j = 0; j < 4; ++j) {
       p[j] = npart[cells[4*i+j]];
     }
-    if (!(p[0] == p[1] && (p[0] == p[2]) && (p[0] == p[3]))) {
-      for (int j = 0; j < 4; ++j) {
-        for (int k = 0; k < 4; ++k) {
-          if (p[j] != p[k] && !elem(adj_list[p[j]], adj_sizes[p[j]], p[k])) {
-            adj_list[p[j]][adj_sizes[p[j]]] = p[k];
-            ++adj_sizes[p[j]];
-          }
+    for (int j = 0; j < 4; ++j) {
+      for (int k = 0; k < 4; ++k) {
+        if (p[j] != p[k] && !elem(adj_list[p[j]], adj_sizes[p[j]], p[k])) {
+          adj_list[p[j]][adj_sizes[p[j]]] = p[k];
+          ++adj_sizes[p[j]];
         }
       }
     }
@@ -345,14 +343,12 @@ int main(int argc, char* argv[]) {
   int *cpart = malloc(ncell * sizeof(*cpart));
   int *npart = malloc(nnode * sizeof(*npart));
   int num_parts = ncell / CELLS_PER_PARTITION;
-  //idx_t options[METIS_NOPTIONS];
-  //options[METIS_OPTION_NUMBERING] = 0;
   int nn = nnode;
   int nc = ncell;
   printf("Partitioning %d cells in %d partitions\n", ncell, num_parts);
-  METIS_PartMeshNodal(&nc, &nn, cptr, cell, NULL, NULL, &num_parts, NULL, /*options*/NULL, &objval, cpart, npart);
+  METIS_PartMeshNodal(&nc, &nn, cptr, cell, NULL, NULL, &num_parts, NULL, NULL, &objval, cpart, npart);
 
-  partition* ps = (partition*)malloc(num_parts * sizeof(partition));
+  partition* ps = (partition*)malloc(num_parts * sizeof(*ps));
   for (int i = 0; i < num_parts; ++i) {
     ps[i].nedges = 0;
     ps[i].nnodes = 0;
@@ -386,7 +382,7 @@ int main(int argc, char* argv[]) {
 
   for (int i = 0; i < ncell; ++i) {
     int n = cpart[i]; // n is partition number
-    if (ps[n].ncells == ps[n].max_cells - 1) {
+    if (ps[n].ncells >= ps[n].max_cells - 1) {
       ps[n].max_cells += 128;
       ps[n].cells = realloc(ps[n].cells, ps[n].max_cells * sizeof(*ps[n].cells));
     }
@@ -499,7 +495,7 @@ int main(int argc, char* argv[]) {
 //  ugraph* partitionGraph = generateGraph(npart, edge, nedge*2, num_parts);
   printf("Generating partition graph\n");
   ugraph* partitionGraph = generateGraphCells(npart, cell, ncell, num_parts);
-  if (partitionGraph == NULL) {
+  if (!partitionGraph) {
     printf("ERROR! partition graph is NULL!\n");
     return 1;
   }
