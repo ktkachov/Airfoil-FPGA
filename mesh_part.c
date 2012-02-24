@@ -38,7 +38,7 @@ int min(int, int);
 int max(int, int);
 void showGraph(ugraph*);
 
-ugraph* generateGraphCells(int* npart, int* map, int dim, int len, int num_parts) {
+ugraph* generateGraph(int* npart, int* map, int dim, int len, int num_parts) {
   int** adj_list = malloc(num_parts * sizeof(*adj_list));
   if (!adj_list) {
     fprintf(stderr, "ERROR! could not allocate memory for adjacency list\n");
@@ -387,7 +387,7 @@ int main(int argc, char* argv[]) {
   }
 //  ugraph* partitionGraph = generateGraph(npart, edge, nedge*2, num_parts);
   printf("Generating partition graph\n");
-  ugraph* partitionGraph = generateGraphCells(npart, cell, 4, ncell, num_parts);
+  ugraph* partitionGraph = generateGraph(npart, cell, 4, ncell, num_parts);
   if (!partitionGraph) {
     printf("ERROR! partition graph is NULL!\n");
     return 1;
