@@ -3,6 +3,7 @@
 #include <math.h>
 #include <time.h>
 #include <string.h>
+#include <stdint.h>
 #include "metis.h"
 #include "hash_map.h"
 
@@ -10,6 +11,7 @@
 #define NODES_PER_PARTITION (EDGES_PER_PARTITION / 2)
 #define CELLS_PER_PARTITION (EDGES_PER_PARTITION / 2)
 
+#define PRIME 60013
 const char* colourNames[] = {
   "aqua",
   "olive",
@@ -27,28 +29,29 @@ const char* colourNames[] = {
 };
 
 typedef struct graph_struct {
-  int** adj_list;
-  int* adj_sizes;
-  int* colours;
-  int num_nodes;
+  uint32_t** adj_list;
+  uint32_t* adj_sizes;
+  uint32_t* colours;
+  uint32_t num_nodes;
 } ugraph;
 
 typedef struct part_array_struct {
-  int* arr;
-  int len;
-  int maxLen;
+  uint32_t* arr;
+  uint32_t len;
+  uint32_t maxLen;
 } arr_t;
 
 typedef struct partition_struct {
-  int* enodes;
-  int* ecells;
+  uint32_t* enodes;
+  uint32_t* ecells;
 
-  int* neighbours;
-  int nneighbours;
+  uint32_t* neighbours;
+  uint32_t nneighbours;
 
-  int* c2n; /*Cells to nodes map*/
+  uint32_t* c2n; /*Cells to nodes map*/
 
-  hash_map* node_ind; /*mapping of local node number to global node number*/
+  hash_map* node_ind; /*mapping of global node number to local node number*/
+  hash_map* cell_ind; /*mapping of global cell number to local cell number*/
 
   arr_t haloCells;
   arr_t haloNodes;
@@ -58,30 +61,30 @@ typedef struct partition_struct {
   arr_t* hrCells; /*Halo region cells*/
 } partition;
 
-int elem(int*, int, int);
-int elemArr(arr_t*, int);
+uint32_t elem(uint32_t*, uint32_t, uint32_t);
+uint32_t elemArr(arr_t*, uint32_t);
 void colourGraph(ugraph*);
-int removeDups(int*, int);
-int min(int, int);
-int max(int, int);
+uint32_t removeDups(uint32_t*, uint32_t);
+uint32_t min(uint32_t, uint32_t);
+uint32_t max(uint32_t, uint32_t);
 void showGraph(ugraph*);
 
-ugraph* generateGraph(int* npart, int* map, int dim, int len, int num_parts) {
-  int** adj_list = malloc(num_parts * sizeof(*adj_list));
+ugraph* generateGraph(uint32_t* npart, uint32_t* map, uint32_t dim, uint32_t len, uint32_t num_parts) {
+  uint32_t** adj_list = malloc(num_parts * sizeof(*adj_list));
   if (!adj_list) {
     fprintf(stderr, "ERROR! could not allocate memory for adjacency list\n");
   }
-  int* adj_sizes = calloc(sizeof(*adj_sizes), num_parts);
-  for (int i = 0; i < num_parts; ++i) {
+  uint32_t* adj_sizes = calloc(sizeof(*adj_sizes), num_parts);
+  for (uint32_t i = 0; i < num_parts; ++i) {
     adj_list[i] = malloc(num_parts * sizeof(*adj_list[i]));
   } 
-  for (int i = 0; i < len; ++i) {
-    int p[dim];
-    for (int j = 0; j < dim; ++j) {
+  for (uint32_t i = 0; i < len; ++i) {
+    uint32_t p[dim];
+    for (uint32_t j = 0; j < dim; ++j) {
       p[j] = npart[map[dim*i+j]];
     }
-    for (int j = 0; j < dim; ++j) {
-      for (int k = 0; k < dim; ++k) {
+    for (uint32_t j = 0; j < dim; ++j) {
+      for (uint32_t k = 0; k < dim; ++k) {
         if (p[j] != p[k] && !elem(adj_list[p[j]], adj_sizes[p[j]], p[k])) {
           adj_list[p[j]][adj_sizes[p[j]]++] = p[k];
         }
@@ -99,18 +102,18 @@ ugraph* generateGraph(int* npart, int* map, int dim, int len, int num_parts) {
   Greedy colouring algorithm
 */
 void colourGraph(ugraph* graph) {
-  int nv = graph->num_nodes; //Number of vertices, also maximum colours
-  int* colours = malloc(graph->num_nodes * sizeof(*colours));
-  for (int i = 0; i < nv; ++i) {
+  uint32_t nv = graph->num_nodes; //Number of vertices, also maximum colours
+  uint32_t* colours = malloc(graph->num_nodes * sizeof(*colours));
+  for (uint32_t i = 0; i < nv; ++i) {
     colours[i] = -1;
   }
-  int ncolours = 1;
-  for (int i = 0; i < nv; ++i) {
-    int c = 0;
-    int repeat = 1;
+  uint32_t ncolours = 1;
+  for (uint32_t i = 0; i < nv; ++i) {
+    uint32_t c = 0;
+    uint32_t repeat = 1;
     while (c < ncolours && repeat) {
-      int a = 1; //colour availble
-      for (int v = 0; v < graph->adj_sizes[i] && a; ++v) {
+      uint32_t a = 1; //colour availble
+      for (uint32_t v = 0; v < graph->adj_sizes[i] && a; ++v) {
         if (colours[graph->adj_list[i][v]] == c) {
           a = 0;
         }
@@ -128,18 +131,18 @@ void colourGraph(ugraph* graph) {
   graph->colours = colours;
 }
 
-inline void print_array(double* data, int len, const char* file_name) {
+inline void pruint32_t_array(double* data, uint32_t len, const char* file_name) {
   FILE* flog;
   flog = fopen(file_name, "w");
-  for (int i = 0; i < len; ++i) {
+  for (uint32_t i = 0; i < len; ++i) {
     fprintf(flog, "%lf\n", data[i]);
   }
   fclose(flog);
   
 }
 
-int removeDups(int* arr, int len) {
-  int i, j;
+uint32_t removeDups(uint32_t* arr, uint32_t len) {
+  uint32_t i, j;
   j = 0; 
   for (i = 1; i < len; ++i) {
     if (arr[i] != arr[j]) {
@@ -152,7 +155,7 @@ int removeDups(int* arr, int len) {
 }
 
 void removeDupsArr(arr_t* a) {
-  int i, j;
+  uint32_t i, j;
   j = 0;
   for (i = 1; i < a->len; ++i) {
     if (a->arr[i] != a->arr[j]) {
@@ -164,8 +167,8 @@ void removeDupsArr(arr_t* a) {
   a->arr = realloc(a->arr, a->len * sizeof(*(a->arr)));
 }
 
-inline int elem(int* arr, int len, int x) {
-  for (int i = 0; i < len; ++i) {
+inline uint32_t elem(uint32_t* arr, uint32_t len, uint32_t x) {
+  for (uint32_t i = 0; i < len; ++i) {
     if (arr[i] == x) {
       return 1;
     }
@@ -173,8 +176,8 @@ inline int elem(int* arr, int len, int x) {
   return 0;
 }
 
-inline int elemArr(arr_t* a, int x) {
-  for (int i = 0; i < a->len; ++i) {
+inline uint32_t elemArr(arr_t* a, uint32_t x) {
+  for (uint32_t i = 0; i < a->len; ++i) {
     if (a->arr[i] == x) {
       return 1;
     }
@@ -182,11 +185,11 @@ inline int elemArr(arr_t* a, int x) {
   return 0;
 }
 
-inline int min(int a, int b) {
+inline uint32_t min(uint32_t a, uint32_t b) {
   return a < b ? a : b;
 }
 
-inline int max(int a, int b) {
+inline uint32_t max(uint32_t a, uint32_t b) {
   return a > b ? a : b;
 }
 
@@ -195,14 +198,14 @@ void generateDotGraph(ugraph* g, const char* fileName, partition* ps) {
   fprintf(fp, "graph mesh {\n");
 
   if (g->colours != NULL) {
-    for (int i = 0; i < g->num_nodes; ++i) {
-      fprintf(fp, "\t%d[color=\"%s\"];\n", i, colourNames[g->colours[i]]);
+    for (uint32_t i = 0; i < g->num_nodes; ++i) {
+      fprintf(fp, "\t%u[color=\"%s\"];\n", i, colourNames[g->colours[i]]);
     }
   }  
-  for (int i = 0; i < g->num_nodes; ++i) {
-    for (int j = 0; j < g->adj_sizes[i]; ++j) {
+  for (uint32_t i = 0; i < g->num_nodes; ++i) {
+    for (uint32_t j = 0; j < g->adj_sizes[i]; ++j) {
       if (g->adj_list[i][j] > i) {
-        fprintf(fp, "\t%d -- %d [label=%d];\n", i, g->adj_list[i][j], ps[i].hrCells[j].len);
+        fprintf(fp, "\t%u -- %u [label=%u];\n", i, g->adj_list[i][j], ps[i].hrCells[j].len);
       }
     }
   }
@@ -212,17 +215,17 @@ void generateDotGraph(ugraph* g, const char* fileName, partition* ps) {
 
 
 void showGraph(ugraph* g) {
-  for (int i = 0; i < g->num_nodes; ++i) {
-    printf("%d : ", i);
-    for (int j = 0 ; j < g->adj_sizes[i]; ++j) {
-      printf("%d, ", g->adj_list[i][j]);
+  for (uint32_t i = 0; i < g->num_nodes; ++i) {
+    printf("%u : ", i);
+    for (uint32_t j = 0 ; j < g->adj_sizes[i]; ++j) {
+      printf("%u, ", g->adj_list[i][j]);
     }
     printf("\n");
   }
 }
 
 
-void addToArr(arr_t* a, int e) {
+void addToArr(arr_t* a, uint32_t e) {
   if (a->len == a->maxLen - 1) {
     a->maxLen += 64;
     a->arr = realloc(a->arr, a->maxLen * sizeof(*(a->arr)));
@@ -230,7 +233,7 @@ void addToArr(arr_t* a, int e) {
   a->arr[a->len++] = e;
 }
 
-void initArr(arr_t* a, int size) {
+void initArr(arr_t* a, uint32_t size) {
   a->len = 0;
   a->maxLen = size;
   a->arr = malloc(a->maxLen * sizeof(*(a->arr)));
@@ -239,10 +242,10 @@ void initArr(arr_t* a, int size) {
 
 int main(int argc, char* argv[]) {
 
-  int *becell, *ecell, *bound, *bedge, *edge, *cell;
+  uint32_t *becell, *ecell, *bound, *bedge, *edge, *cell;
   double *x, *q, *qold, *adt, *res;
 
-  int nnode,ncell,nedge,nbedge;
+  uint32_t nnode,ncell,nedge,nbedge;
   
   // read in grid
 
@@ -252,7 +255,7 @@ int main(int argc, char* argv[]) {
     printf("can't open file new_grid.dat\n"); exit(-1);
   }
 
-  if (fscanf(fp,"%d %d %d %d \n",&nnode, &ncell, &nedge, &nbedge) != 4) {
+  if (fscanf(fp,"%u %u %u %u \n",&nnode, &ncell, &nedge, &nbedge) != 4) {
     printf("error reading from new_grid.dat\n"); exit(-1);
   }
 
@@ -263,8 +266,8 @@ int main(int argc, char* argv[]) {
   becell = malloc( nbedge*sizeof(*becell));
   bound =  malloc( nbedge*sizeof(*bound));
 
-  int* cellse = malloc(4*ncell*sizeof(*cellse));
-  int* cellse_helper = calloc(sizeof(*cellse_helper), ncell);
+  uint32_t* cellse = malloc(4*ncell*sizeof(*cellse));
+  uint32_t* cellse_helper = calloc(sizeof(*cellse_helper), ncell);
 
   x =  malloc(2*nnode*sizeof(*x));
   q =  malloc(4*ncell*sizeof(*q));
@@ -272,28 +275,28 @@ int main(int argc, char* argv[]) {
   res = malloc(4*ncell*sizeof(*res));
   adt = malloc( ncell*sizeof(*adt));
 
-  for (int n=0; n<nnode; n++) {
+  for (uint32_t n=0; n<nnode; n++) {
     if (fscanf(fp,"%lf %lf \n",&x[2*n], &x[2*n+1]) != 2) {
       printf("error reading from new_grid.dat\n"); exit(-1);
     }
   }
 
-  for (int n=0; n<ncell; n++) {
-    if (fscanf(fp,"%d %d %d %d \n",&cell[4*n ], &cell[4*n+1],
+  for (uint32_t n=0; n<ncell; n++) {
+    if (fscanf(fp,"%u %u %u %u \n",&cell[4*n ], &cell[4*n+1],
                                    &cell[4*n+2], &cell[4*n+3]) != 4) {
       printf("error reading from new_grid.dat\n"); exit(-1);
     }
   }
 
-  for (int n=0; n<nedge; n++) {
-    if (fscanf(fp,"%d %d %d %d \n",&edge[2*n], &edge[2*n+1],
+  for (uint32_t n=0; n<nedge; n++) {
+    if (fscanf(fp,"%u %u %u %u \n",&edge[2*n], &edge[2*n+1],
                                    &ecell[2*n],&ecell[2*n+1]) != 4) {
       printf("error reading from new_grid.dat\n"); exit(-1);
     }
   }
 
-  for (int n=0; n<nbedge; n++) {
-    if (fscanf(fp,"%d %d %d %d \n",&bedge[2*n],&bedge[2*n+1],
+  for (uint32_t n=0; n<nbedge; n++) {
+    if (fscanf(fp,"%u %u %u %u \n",&bedge[2*n],&bedge[2*n+1],
                                    &becell[n], &bound[n]) != 4) {
       printf("error reading from new_grid.dat\n"); exit(-1);
     }
@@ -303,35 +306,35 @@ int main(int argc, char* argv[]) {
 
 
 /*Populate the cells to edges map*/
-  for (int i = 0; i < nedge; ++i) {
+  for (uint32_t i = 0; i < nedge; ++i) {
     cellse[4*ecell[2*i] + cellse_helper[ecell[2*i]]++] = i;
     cellse[4*ecell[2*i+1] + cellse_helper[ecell[2*i+1]]++] = i;
   }
   free(cellse_helper);
   /*
-  for (int i = 0; i < ncell * 4 ; i+=4) {
-    printf("%d, %d, %d, %d\n", cellse[i], cellse[i+1], cellse[i+2], cellse[i+3]);
+  for (uint32_t i = 0; i < ncell * 4 ; i+=4) {
+    printf("%u, %u, %u, %u\n", cellse[i], cellse[i+1], cellse[i+2], cellse[i+3]);
   }
 */
   clock_t start, end;
   start = clock();
  
-  //Cell pointer for METIS
-  int* cptr = malloc((ncell+1) * sizeof(*cptr));
-  for (int i = 0; i < ncell+1; ++i) {
+  //Cell pouint32_ter for METIS
+  uint32_t* cptr = malloc((ncell+1) * sizeof(*cptr));
+  for (uint32_t i = 0; i < ncell+1; ++i) {
     cptr[i] =4*i;
   }
   int objval;
-  int *cpart = malloc(ncell * sizeof(*cpart));
-  int *npart = malloc(nnode * sizeof(*npart));
+  uint32_t *cpart = malloc(ncell * sizeof(*cpart));
+  uint32_t *npart = malloc(nnode * sizeof(*npart));
   int num_parts = ncell / CELLS_PER_PARTITION;
   int nn = nnode;
   int nc = ncell;
-  printf("Partitioning %d cells in %d partitions...\n", ncell, num_parts);
-  METIS_PartMeshNodal(&nc, &nn, cptr, cell, NULL, NULL, &num_parts, NULL, NULL, &objval, cpart, npart);
+  printf("Partitioning %u cells in %u partitions...\n", ncell, num_parts);
+  METIS_PartMeshNodal(&nc, &nn, (int*)cptr, (int*)cell, NULL, NULL, &num_parts, NULL, NULL, &objval, (int*)cpart, (int*)npart);
 
   partition* ps = (partition*)malloc(num_parts * sizeof(*ps));
-  for (int i = 0; i < num_parts; ++i) {
+  for (uint32_t i = 0; i < num_parts; ++i) {
 
     initArr(&ps[i].edges, EDGES_PER_PARTITION);
     initArr(&ps[i].nodes, NODES_PER_PARTITION);
@@ -341,35 +344,35 @@ int main(int argc, char* argv[]) {
 
   }
 
-  for (int i = 0; i < nedge; ++i) {
-    int n1 = cpart[ecell[2*i]];
-    int n2 = cpart[ecell[2*i+1]];
+  for (uint32_t i = 0; i < nedge; ++i) {
+    uint32_t n1 = cpart[ecell[2*i]];
+    uint32_t n2 = cpart[ecell[2*i+1]];
     addToArr(&ps[n1].edges, i);
     addToArr(&ps[n2].edges, i);
   }
   printf("Assigned edges to partitions\n");
 
-  for (int i = 0; i < ncell; ++i) {
-    int n = cpart[i]; // n is partition number
+  for (uint32_t i = 0; i < ncell; ++i) {
+    uint32_t n = cpart[i]; // n is partition number
     addToArr(&ps[n].cells, i);
     
-    int p[4];
-    for (int j = 0; j < 4; ++j) {
+    uint32_t p[4];
+    for (uint32_t j = 0; j < 4; ++j) {
       p[j] = npart[cell[4*i+j]];
     }
     if (!(p[0] == p[1] && p[0] == p[1] && p[0] == p[2] && p[0] == p[3])) {
-      for (int j = 0; j < 4; ++j) {
-        int t = p[j];
+      for (uint32_t j = 0; j < 4; ++j) {
+        uint32_t t = p[j];
         addToArr(&ps[t].haloCells, i);
       }
     }
-    for (int n = 0; n < 4; ++n) {
-      int np = npart[cell[4*i+n]];
-      addToArr(&ps[np].nodes, cell[4*i]);
+    for (uint32_t n = 0; n < 4; ++n) {
+      uint32_t np = npart[cell[4*i+n]];
+      addToArr(&ps[np].nodes, cell[4*i+n]);
     }
   }
  
-  for (int i = 0; i < num_parts; ++i) {
+  for (uint32_t i = 0; i < num_parts; ++i) {
     removeDupsArr(&ps[i].nodes);
     removeDupsArr(&ps[i].cells);
     removeDupsArr(&ps[i].edges);
@@ -377,31 +380,33 @@ int main(int argc, char* argv[]) {
     ps[i].c2n = malloc(4 * ps[i].cells.len * sizeof(*ps[i].c2n));
   }
 
-  printf("Assigning cells to nodes maps to partitions...\n");
-  for (int i = 0; i < num_parts; ++i) {
-    ps[i].node_ind = createHashMap(ps[i].nodes.len);
-    for (int j = 0; j < ps[i].cells.len; ++j) {
-      for (int k = 0; k < 4; ++k) {
-        ps[i].c2n[4*j+k] = cell[4*ps[i].cells.arr[j] + k];
-      }
-    }
-  }
-
-  for (int i = 0; i < num_parts; ++i) {
-    ps[i].node_ind = createHashMap(ps[i].nodes.len);
-    for (int j = 0; j < ps[i].nodes.len; ++j) {
+  printf("Assigning cell-to-nodes maps to partitions...\n");
+  for (uint32_t i = 0; i < num_parts; ++i) {
+    ps[i].node_ind = createHashMap(PRIME);
+    for (uint32_t j = 0; j < ps[i].nodes.len; ++j) {
       addToHashMap(ps[i].node_ind, ps[i].nodes.arr[j], j);
     }
+    ps[i].cell_ind = createHashMap(PRIME);
+    for (uint32_t j = 0; j < ps[i].cells.len; ++j) {
+      addToHashMap(ps[i].cell_ind, ps[i].cells.arr[j], j);
+    }
+
+    for (uint32_t j = 0; j < ps[i].cells.len; ++j) {
+      for (uint32_t k = 0; k < 4; ++k) {
+        ps[i].c2n[4*j + k] = getValue(ps[i].node_ind, cell[4*ps[i].cells.arr[j] + k]);
+      }
+    }
+
   }
 
-  int part_nodes = 0;
-  int part_cells = 0;
-  int part_edges = 0;
-  for (int i = 0; i < num_parts; ++i) {
+  uint32_t part_nodes = 0;
+  uint32_t part_cells = 0;
+  uint32_t part_edges = 0;
+  for (uint32_t i = 0; i < num_parts; ++i) {
     part_nodes += ps[i].nodes.len;
     part_cells += ps[i].cells.len;
     part_edges += ps[i].edges.len;
-    printf("partition %d has: %d edges, %d nodes, %d cells, %d halo cells\n", i, ps[i].edges.len, ps[i].nodes.len, ps[i].cells.len, ps[i].haloCells.len);
+    printf("partition %u has: %u edges, %u nodes, %u cells, %u halo cells\n", i, ps[i].edges.len, ps[i].nodes.len, ps[i].cells.len, ps[i].haloCells.len);
   }
 //  ugraph* partitionGraph = generateGraph(npart, edge, nedge*2, num_parts);
   printf("Generating partition graph\n");
@@ -411,21 +416,21 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  for (int i = 0; i < num_parts; ++i) {
+  for (uint32_t i = 0; i < num_parts; ++i) {
     ps[i].neighbours = malloc(pg->adj_sizes[i] * sizeof(*(ps[i].neighbours)));
     ps[i].nneighbours = pg->adj_sizes[i];
     memcpy(ps[i].neighbours, pg->adj_list[i], pg->adj_sizes[i] * sizeof(*(ps[i].neighbours)));
     ps[i].hrCells = malloc(ps[i].nneighbours * sizeof(*ps[i].hrCells));
-    for (int j = 0; j < ps[i].nneighbours; ++j) {
+    for (uint32_t j = 0; j < ps[i].nneighbours; ++j) {
       initArr(&ps[i].hrCells[j], 64);
     }
   }
 
   printf("Initialised halo regions\n");
 
-  for (int i = 0; i < num_parts; ++i) {
-    for (int j = 0; j < ps[i].haloCells.len; ++j) {
-      for (int n = 0; n < ps[i].nneighbours; ++n) {
+  for (uint32_t i = 0; i < num_parts; ++i) {
+    for (uint32_t j = 0; j < ps[i].haloCells.len; ++j) {
+      for (uint32_t n = 0; n < ps[i].nneighbours; ++n) {
         if (elemArr(&ps[ps[i].neighbours[n]].haloCells, ps[i].haloCells.arr[j])) {
           addToArr(&ps[i].hrCells[n], ps[i].haloCells.arr[j]);
         }
@@ -433,19 +438,19 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  for (int i = 0; i < num_parts; ++i) {
-    for (int j = 0; j < ps[i].nneighbours; ++j) {
+  for (uint32_t i = 0; i < num_parts; ++i) {
+    for (uint32_t j = 0; j < ps[i].nneighbours; ++j) {
       removeDupsArr(&ps[i].hrCells[j]);
     }
   }
 
-  for (int i = 0; i < num_parts; ++i) {
-    int total = 0;
-    for (int j = 0; j < ps[i].nneighbours; ++j) {
-      printf("Halo region %d-%d has %d cells\n", i, ps[i].neighbours[j], ps[i].hrCells[j].len);
+  for (uint32_t i = 0; i < num_parts; ++i) {
+    uint32_t total = 0;
+    for (uint32_t j = 0; j < ps[i].nneighbours; ++j) {
+      printf("Halo region %u-%u has %u cells\n", i, ps[i].neighbours[j], ps[i].hrCells[j].len);
       total += ps[i].hrCells[j].len;
     }
-    printf("Total: %d halo cells\n", total);
+    printf("Total: %u halo cells\n", total);
     printf("----------------------------------\n");
   }
 
@@ -457,7 +462,7 @@ int main(int argc, char* argv[]) {
   generateDotGraph(pg, fileName, ps);
 //  generateDotGraph(npart, edge, nedge*2, num_parts, "mesh.dot");
   end = clock();
-  printf("Nodes: %d, Edges: %d, Cells: %d\n", nnode, nedge, ncell);
+  printf("Nodes: %u, Edges: %u, Cells: %u\n", nnode, nedge, ncell);
   printf("time taken: %lf seconds\n", (double)(end - start)/CLOCKS_PER_SEC);
   
 }
