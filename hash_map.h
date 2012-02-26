@@ -41,28 +41,29 @@ inline uint32_t hash(uint32_t a) {
    return a;
 }
 
-void addToHashMap(hash_map* m, uint32_t k, uint32_t v) {
+int addToHashMap(hash_map* m, uint32_t k, uint32_t v) {
   uint32_t hk = hash(k) % m->size;
   if (m->arr[hk].k == EMPTY_ENTRY) {
     m->arr[hk].k = k;
     m->arr[hk].v = v;
-    return;
+    return 1;
   }
   struct entry* e = &(m->arr[hk]);
   while (e->next != NULL) {
     if (e->k == k) {
-      return;
+      return 0;
     }
     e = e->next;
   }
   if (e->k == k) {
-    return;
+    return 0;
   }
   struct entry* ne = malloc(sizeof(*ne));
   ne->k = k;
   ne->v = v;
   ne->next = NULL;
   e->next = ne;
+  return 1;
 } 
 
 uint32_t contains(hash_map* m, uint32_t k) {

@@ -4,6 +4,7 @@
 #include <time.h>
 #include <string.h>
 #include <stdint.h>
+#include <limits.h>
 #include "metis.h"
 #include "hash_map.h"
 
@@ -48,7 +49,10 @@ typedef struct partition_struct {
   uint32_t* neighbours;
   uint32_t nneighbours;
 
-  uint32_t* c2n; /*Cells to nodes map*/
+  uint32_t* c2n; /*Cells to nodes local map*/
+
+  int ips[3]; /*internal partition sizes*/
+
 
   hash_map* node_ind; /*mapping of global node number to local node number*/
   hash_map* cell_ind; /*mapping of global cell number to local cell number*/
@@ -131,7 +135,7 @@ void colourGraph(ugraph* graph) {
   graph->colours = colours;
 }
 
-inline void pruint32_t_array(double* data, uint32_t len, const char* file_name) {
+inline void printarray(double* data, uint32_t len, const char* file_name) {
   FILE* flog;
   flog = fopen(file_name, "w");
   for (uint32_t i = 0; i < len; ++i) {
@@ -359,6 +363,7 @@ int main(int argc, char* argv[]) {
     uint32_t p[4];
     for (uint32_t j = 0; j < 4; ++j) {
       p[j] = npart[cell[4*i+j]];
+      addToArr(&ps[p[j]].nodes, cell[4*i+j]);
     }
     if (!(p[0] == p[1] && p[0] == p[1] && p[0] == p[2] && p[0] == p[3])) {
       for (uint32_t j = 0; j < 4; ++j) {
@@ -366,36 +371,51 @@ int main(int argc, char* argv[]) {
         addToArr(&ps[t].haloCells, i);
       }
     }
-    for (uint32_t n = 0; n < 4; ++n) {
-      uint32_t np = npart[cell[4*i+n]];
-      addToArr(&ps[np].nodes, cell[4*i+n]);
-    }
   }
  
   for (uint32_t i = 0; i < num_parts; ++i) {
-    removeDupsArr(&ps[i].nodes);
-    removeDupsArr(&ps[i].cells);
-    removeDupsArr(&ps[i].edges);
-    removeDupsArr(&ps[i].haloCells);
+    removeDupsArr(&(ps[i].nodes));
+    removeDupsArr(&(ps[i].cells));
+    removeDupsArr(&(ps[i].edges));
+    removeDupsArr(&(ps[i].haloCells));
     ps[i].c2n = malloc(4 * ps[i].cells.len * sizeof(*ps[i].c2n));
   }
 
   printf("Assigning cell-to-nodes maps to partitions...\n");
   for (uint32_t i = 0; i < num_parts; ++i) {
+
     ps[i].node_ind = createHashMap(PRIME);
-    for (uint32_t j = 0; j < ps[i].nodes.len; ++j) {
-      addToHashMap(ps[i].node_ind, ps[i].nodes.arr[j], j);
-    }
     ps[i].cell_ind = createHashMap(PRIME);
+    int nodes_added = 0;
     for (uint32_t j = 0; j < ps[i].cells.len; ++j) {
       addToHashMap(ps[i].cell_ind, ps[i].cells.arr[j], j);
+      for (int k = 0; k < 4; ++k) {
+        nodes_added += addToHashMap(ps[i].node_ind, cell[4*ps[i].cells.arr[j] + k], nodes_added);
+      }
     }
+    printf("Nodes added %d in partition %d\n", nodes_added, i);
 
     for (uint32_t j = 0; j < ps[i].cells.len; ++j) {
       for (uint32_t k = 0; k < 4; ++k) {
-        ps[i].c2n[4*j + k] = getValue(ps[i].node_ind, cell[4*ps[i].cells.arr[j] + k]);
+        uint32_t v = getValue(ps[i].node_ind, cell[4*ps[i].cells.arr[j]+k]);
+        ps[i].c2n[4*j + k] = v;
       }
     }
+    uint32_t* pcptr = malloc((ps[i].cells.len + 1) * sizeof(*pcptr));
+    for (int j = 0; j < ps[i].cells.len + 1; ++j) {
+      pcptr[j] = 4*j;
+    }
+    uint32_t* pcpart = malloc(ps[i].cells.len * sizeof(*pcpart));
+    uint32_t* pnpart = malloc(nodes_added * sizeof(*pnpart));
+    int nparts = 2;
+//    printf("Partitioning partition %d\n", i);
+    METIS_PartMeshNodal((int*)&ps[i].cells.len, &nodes_added, (int*)pcptr, (int*)ps[i].c2n, NULL, NULL, &nparts, NULL, NULL, &objval, (int*)pcpart, (int*)pnpart);
+
+    ps[i].ips[0] = ps[i].ips[1] = ps[i].ips[2] = 0;
+    for (int j = 0; j < ps[i].cells.len; ++j) {
+      ++ps[i].ips[pcpart[j]];
+    }
+    printf("Partition %d is partitioned in partitions of sizes %d and %d cells\n", i, ps[i].ips[0], ps[i].ips[1]);
 
   }
 
