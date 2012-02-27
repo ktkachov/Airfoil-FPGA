@@ -109,7 +109,7 @@ void colourGraph(ugraph* graph) {
   uint32_t nv = graph->num_nodes; //Number of vertices, also maximum colours
   uint32_t* colours = malloc(graph->num_nodes * sizeof(*colours));
   for (uint32_t i = 0; i < nv; ++i) {
-    colours[i] = -1;
+    colours[i] = UINT_MAX;
   }
   uint32_t ncolours = 1;
   for (uint32_t i = 0; i < nv; ++i) {
