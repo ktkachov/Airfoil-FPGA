@@ -413,9 +413,17 @@ int main(int argc, char* argv[]) {
 
     ps[i].ips[0] = ps[i].ips[1] = ps[i].ips[2] = 0;
     for (int j = 0; j < ps[i].cells.len; ++j) {
-      ++ps[i].ips[pcpart[j]];
+      int part[4];
+      for (int k = 0; k < 4; ++k) {
+        part[k] = pnpart[ps[i].c2n[4*j+k]];
+      }
+      if (!(part[0] == part[1] && part[0] == part[2] && part[0] == part[3])) {
+        ++ps[i].ips[2];
+      } else {
+        ++ps[i].ips[part[0]];
+      }
     }
-    printf("Partition %d is partitioned in partitions of sizes %d and %d cells\n", i, ps[i].ips[0], ps[i].ips[1]);
+    printf("Partition %d is partitioned in partitions of sizes %d, %d and %d intra partition halo cells\n", i, ps[i].ips[0], ps[i].ips[1], ps[i].ips[2]);
 
   }
 
