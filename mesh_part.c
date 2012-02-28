@@ -12,10 +12,13 @@
 #define NODES_PER_PARTITION (EDGES_PER_PARTITION / 2)
 #define CELLS_PER_PARTITION (EDGES_PER_PARTITION / 2)
 
+/*This depends on the arithmetic pipeline depth on the FPGA*/
 #define BOTTOM_LEVEL_PARTITIONS 17
 
 #define PRIME 60013
 #define SMALL_PRIME 10007
+
+/*colourNames is used to create a DOT file that dumps graphs in a renderable format*/
 const char* colourNames[] = {
   "aqua",
   "olive",
@@ -32,6 +35,7 @@ const char* colourNames[] = {
   "aquamarine4"
 };
 
+/*Undirected graph structure, represented as ajacency lists*/
 typedef struct graph_struct {
   uint32_t** adj_list;
   uint32_t* adj_sizes;
@@ -39,6 +43,8 @@ typedef struct graph_struct {
   uint32_t num_nodes;
 } ugraph;
 
+
+/*Semi dynamic array, if this was C++, I would have used an std::vector instead*/
 typedef struct array_struct {
   uint32_t* arr;
   uint32_t len;
@@ -70,6 +76,7 @@ typedef struct partition_struct {
   arr_t haloNodes;
   arr_t edges;
   arr_t cells;
+  arr_t non_halo_cells;
   arr_t nodes;
   arr_t* hrCells; /*Halo region cells*/
 } partition;
@@ -82,6 +89,12 @@ uint32_t min(uint32_t, uint32_t);
 uint32_t max(uint32_t, uint32_t);
 void showGraph(ugraph*);
 
+
+/*
+  Takes an array specifying the partition number of each node, a map of elements to nodes, 
+  the dimension of the map (4 for cells, 2 for edges),
+  the number of elements, and the number of partitions
+*/
 ugraph* generateGraph(uint32_t* npart, uint32_t* map, uint32_t dim, uint32_t len, uint32_t num_parts) {
   uint32_t** adj_list = malloc(num_parts * sizeof(*adj_list));
   if (!adj_list) {
@@ -151,9 +164,12 @@ inline void printarray(double* data, uint32_t len, const char* file_name) {
     fprintf(flog, "%lf\n", data[i]);
   }
   fclose(flog);
-  
 }
 
+
+/*
+  Taken from the OP2 library
+*/
 uint32_t removeDups(uint32_t* arr, uint32_t len) {
   uint32_t i, j;
   j = 0; 
@@ -206,6 +222,11 @@ inline uint32_t max(uint32_t a, uint32_t b) {
   return a > b ? a : b;
 }
 
+/*
+  Render a partition graph into a DOT file, can specify partition structs 
+  with filled in hrCells fields for edge weights or leave the 2nd argument NULL
+  for general ugraph processing
+*/
 void generateDotGraph(ugraph* g, const char* fileName, partition* ps) {
   FILE* fp = fopen(fileName, "w");
   fprintf(fp, "graph mesh {\n");
@@ -218,7 +239,11 @@ void generateDotGraph(ugraph* g, const char* fileName, partition* ps) {
   for (uint32_t i = 0; i < g->num_nodes; ++i) {
     for (uint32_t j = 0; j < g->adj_sizes[i]; ++j) {
       if (g->adj_list[i][j] > i) {
-        fprintf(fp, "\t%u -- %u [label=%u];\n", i, g->adj_list[i][j], ps[i].hrCells[j].len);
+        if (ps != NULL) {
+          fprintf(fp, "\t%u -- %u [label=%u];\n", i, g->adj_list[i][j], ps[i].hrCells[j].len);
+        } else {
+          fprintf(fp, "\t%u -- %u;\n", i, g->adj_list[i][j]);
+        }
       }
     }
   }
@@ -227,6 +252,7 @@ void generateDotGraph(ugraph* g, const char* fileName, partition* ps) {
 }
 
 
+/*Dump an undirected graph to stdout*/
 void showGraph(ugraph* g) {
   for (uint32_t i = 0; i < g->num_nodes; ++i) {
     if (g->colours != NULL) {
@@ -242,6 +268,7 @@ void showGraph(ugraph* g) {
 }
 
 
+/*Helper functions to manipulate arr_t structures*/
 void addToArr(arr_t* a, uint32_t e) {
   if (a->len == a->maxLen - 1) {
     a->maxLen += 64;
@@ -264,7 +291,7 @@ int main(int argc, char* argv[]) {
 
   uint32_t nnode,ncell,nedge,nbedge;
   
-  // read in grid
+  /* read in grid */
 
   printf("reading in grid \n");
   FILE *fp;
@@ -283,6 +310,10 @@ int main(int argc, char* argv[]) {
   becell = malloc( nbedge*sizeof(*becell));
   bound =  malloc( nbedge*sizeof(*bound));
 
+  /*
+    Cellse is the cells-to-edges map, cellse_helper is used in the building of that map
+    and free'd afterwards. Not currently used, but may come in handy later on.
+  */
   uint32_t* cellse = malloc(4*ncell*sizeof(*cellse));
   uint32_t* cellse_helper = calloc(sizeof(*cellse_helper), ncell);
 
@@ -322,21 +353,17 @@ int main(int argc, char* argv[]) {
   fclose(fp);
 
 
-/*Populate the cells to edges map*/
+  /*Populate the cells to edges map*/
   for (uint32_t i = 0; i < nedge; ++i) {
     cellse[4*ecell[2*i] + cellse_helper[ecell[2*i]]++] = i;
     cellse[4*ecell[2*i+1] + cellse_helper[ecell[2*i+1]]++] = i;
   }
   free(cellse_helper);
-  /*
-  for (uint32_t i = 0; i < ncell * 4 ; i+=4) {
-    printf("%u, %u, %u, %u\n", cellse[i], cellse[i+1], cellse[i+2], cellse[i+3]);
-  }
-*/
+  
   clock_t start, end;
   start = clock();
  
-  //Cell pouint32_ter for METIS
+  /* Cell pointer for METIS, since all cells have 4 nodes, this is not very interesting, but METIS requires it*/
   uint32_t* cptr = malloc((ncell+1) * sizeof(*cptr));
   for (uint32_t i = 0; i < ncell+1; ++i) {
     cptr[i] =4*i;
@@ -348,8 +375,10 @@ int main(int argc, char* argv[]) {
   int nn = nnode;
   int nc = ncell;
   printf("Partitioning %u cells in %u partitions...\n", ncell, num_parts);
+  /*Initial partitioning of the mesh by cells*/
   METIS_PartMeshNodal(&nc, &nn, (int*)cptr, (int*)cell, NULL, NULL, &num_parts, NULL, NULL, &objval, (int*)cpart, (int*)npart);
 
+  /*Initialising our partition structures*/
   partition* ps = (partition*)malloc(num_parts * sizeof(*ps));
   for (uint32_t i = 0; i < num_parts; ++i) {
 
@@ -358,9 +387,10 @@ int main(int argc, char* argv[]) {
     initArr(&ps[i].cells, CELLS_PER_PARTITION);
     initArr(&ps[i].haloNodes, NODES_PER_PARTITION / 10);
     initArr(&ps[i].haloCells, CELLS_PER_PARTITION / 10);
-
+    initArr(&ps[i].non_halo_cells, CELLS_PER_PARTITION);
   }
 
+  /*Assigning edges to partitions*/
   for (uint32_t i = 0; i < nedge; ++i) {
     uint32_t n1 = cpart[ecell[2*i]];
     uint32_t n2 = cpart[ecell[2*i+1]];
@@ -369,10 +399,14 @@ int main(int argc, char* argv[]) {
   }
   printf("Assigned edges to partitions\n");
 
+  /*
+    Assigning cells to partitions, and choosing which ones are halo cells, and non-halo cells.
+    Halo cells are cells in which not all nodes belong to the same partition, as determined by the npart
+    output of METIS
+  */
   for (uint32_t i = 0; i < ncell; ++i) {
-    uint32_t n = cpart[i]; // n is partition number
+    int n = cpart[i];
     addToArr(&ps[n].cells, i);
-    
     uint32_t p[4];
     for (uint32_t j = 0; j < 4; ++j) {
       p[j] = npart[cell[4*i+j]];
@@ -383,20 +417,28 @@ int main(int argc, char* argv[]) {
         uint32_t t = p[j];
         addToArr(&ps[t].haloCells, i);
       }
+    } else {
+      addToArr(&ps[p[0]].non_halo_cells, i);
     }
   }
  
+  /*Clean up the structures populated above and initialise the local cells-to-nodes maps*/
   for (uint32_t i = 0; i < num_parts; ++i) {
     removeDupsArr(&(ps[i].nodes));
     removeDupsArr(&(ps[i].cells));
     removeDupsArr(&(ps[i].edges));
     removeDupsArr(&(ps[i].haloCells));
+    removeDupsArr(&(ps[i].non_halo_cells));
     ps[i].c2n = malloc(4 * ps[i].cells.len * sizeof(*ps[i].c2n));
   }
 
   printf("Assigning cell-to-nodes maps to partitions...\n");
   for (uint32_t i = 0; i < num_parts; ++i) {
 
+    /*
+      We use hash maps to store the mapping of global cell and node numbers to local numbers.
+      We need local cell and node numbers in order to partition the partitions internally.
+    */
     ps[i].node_ind = createHashMap(PRIME);
     ps[i].cell_ind = createHashMap(PRIME);
     uint32_t nodes_added = 0;
@@ -408,12 +450,17 @@ int main(int argc, char* argv[]) {
     }
     printf("Nodes added %d in partition %d\n", nodes_added, i);
 
+    /*
+      Populate the local cells-to-nodes map, using the hash maps that we filled in above
+    */
     for (uint32_t j = 0; j < ps[i].cells.len; ++j) {
       for (uint32_t k = 0; k < 4; ++k) {
         uint32_t v = getValue(ps[i].node_ind, cell[4*ps[i].cells.arr[j]+k]);
         ps[i].c2n[4*j + k] = v;
       }
     }
+
+    /*Preparations for partitioning the partition into 2 partitions*/
     uint32_t* pcptr = malloc((ps[i].cells.len + 1) * sizeof(*pcptr));
     for (uint32_t j = 0; j < ps[i].cells.len + 1; ++j) {
       pcptr[j] = 4*j;
@@ -421,10 +468,11 @@ int main(int argc, char* argv[]) {
     uint32_t* pcpart = malloc(ps[i].cells.len * sizeof(*pcpart));
     uint32_t* pnpart = malloc(nodes_added * sizeof(*pnpart));
     uint32_t nparts = 2;
-//    printf("Partitioning partition %d\n", i);
     METIS_PartMeshNodal((int*)&ps[i].cells.len, (int*)&nodes_added, (int*)pcptr, (int*)ps[i].c2n, NULL, NULL,(int*) &nparts, NULL, NULL, &objval, (int*)pcpart, (int*)pnpart);
     free(pcptr);
     pcptr = NULL;
+
+    /*Here we determine the two internal partitions and the intra-partition halo cells*/
     initArr(&ps[i].iparts[0].cells, CELLS_PER_PARTITION / 2);
     initArr(&ps[i].iparts[1].cells, CELLS_PER_PARTITION / 2);
     initArr(&ps[i].iparts[2].cells, CELLS_PER_PARTITION / 40);
@@ -446,6 +494,12 @@ int main(int argc, char* argv[]) {
            ps[i].iparts[2].cells.len
           );
 
+    /*
+      In this for loop we repeat a similar procedure to above, but we partition each region
+      (including the intra-partition halo region into 17 partitions each (TODO: do we need to do this
+      for the intra-partition halo as well?)).
+      We create an adjacency graph for each of the 3 regions and we colour the bottom-level partitions.
+    */
     for (uint32_t j = 0; j < 3; ++j) {
       ipartition* ip = &ps[i].iparts[j];
       ip->node_ind = createHashMap(SMALL_PRIME);
@@ -487,16 +541,17 @@ int main(int argc, char* argv[]) {
     part_nodes += ps[i].nodes.len;
     part_cells += ps[i].cells.len;
     part_edges += ps[i].edges.len;
-    printf("partition %u has: %u edges, %u nodes, %u cells, %u halo cells\n", i, ps[i].edges.len, ps[i].nodes.len, ps[i].cells.len, ps[i].haloCells.len);
+    printf("partition %u has: %u edges, %u nodes, %u cells, %u halo cells\n", i, ps[i].edges.len, ps[i].nodes.len, ps[i].non_halo_cells.len, ps[i].haloCells.len);
   }
-//  ugraph* partitionGraph = generateGraph(npart, edge, nedge*2, num_parts);
-  printf("Generating partition graph\n");
+  printf("Generating top level partition graph\n");
   ugraph* pg = generateGraph(npart, cell, 4, ncell, num_parts);
   if (!pg) {
     printf("ERROR! partition graph is NULL!\n");
     return 1;
   }
 
+
+  /*Initialise the per-neighbour halo regions for each partition*/
   for (uint32_t i = 0; i < num_parts; ++i) {
     ps[i].neighbours = malloc(pg->adj_sizes[i] * sizeof(*(ps[i].neighbours)));
     ps[i].nneighbours = pg->adj_sizes[i];
@@ -509,6 +564,7 @@ int main(int argc, char* argv[]) {
 
   printf("Initialised halo regions\n");
 
+  /*Determine the cells that are shared between every pair of partitions*/
   for (uint32_t i = 0; i < num_parts; ++i) {
     for (uint32_t j = 0; j < ps[i].haloCells.len; ++j) {
       for (uint32_t n = 0; n < ps[i].nneighbours; ++n) {
@@ -518,13 +574,14 @@ int main(int argc, char* argv[]) {
       }
     }
   }
-
+  /*Clean up the structures from above*/
   for (uint32_t i = 0; i < num_parts; ++i) {
     for (uint32_t j = 0; j < ps[i].nneighbours; ++j) {
       removeDupsArr(&ps[i].hrCells[j]);
     }
   }
 
+  /*Diagnostic messages, etc*/
   for (uint32_t i = 0; i < num_parts; ++i) {
     uint32_t total = 0;
     for (uint32_t j = 0; j < ps[i].nneighbours; ++j) {
@@ -542,7 +599,6 @@ int main(int argc, char* argv[]) {
   const char* fileName = "meshColoured.dot";
   printf("Writing partition graph to %s ...\n", fileName);
   generateDotGraph(pg, fileName, ps);
-//  generateDotGraph(npart, edge, nedge*2, num_parts, "mesh.dot");
   end = clock();
   printf("Nodes: %u, Edges: %u, Cells: %u\n", nnode, nedge, ncell);
   printf("time taken: %lf seconds\n", (double)(end - start)/CLOCKS_PER_SEC);
