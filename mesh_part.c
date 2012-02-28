@@ -12,7 +12,10 @@
 #define NODES_PER_PARTITION (EDGES_PER_PARTITION / 2)
 #define CELLS_PER_PARTITION (EDGES_PER_PARTITION / 2)
 
+#define BOTTOM_LEVEL_PARTITIONS 17
+
 #define PRIME 60013
+#define SMALL_PRIME 10007
 const char* colourNames[] = {
   "aqua",
   "olive",
@@ -36,23 +39,29 @@ typedef struct graph_struct {
   uint32_t num_nodes;
 } ugraph;
 
-typedef struct part_array_struct {
+typedef struct array_struct {
   uint32_t* arr;
   uint32_t len;
   uint32_t maxLen;
 } arr_t;
 
+typedef struct internal_partition_struct {
+  arr_t cells;
+  ugraph* cg; /*Connectivity graph for internal partitions*/
+  uint32_t* c2n; /* cells to nodes local map*/
+  hash_map* node_ind; /*global to local node numbers*/
+  hash_map* cell_ind;
+} ipartition;
+
 typedef struct partition_struct {
   uint32_t* enodes;
   uint32_t* ecells;
-
   uint32_t* neighbours;
   uint32_t nneighbours;
-
   uint32_t* c2n; /*Cells to nodes local map*/
 
-  int ips[3]; /*internal partition sizes*/
-
+  uint32_t ips[3]; /*internal partition sizes*/
+  ipartition iparts[3]; /*Internal partitions, 0,1 are partitions, 2 is intra partition halo, locally numbered*/
 
   hash_map* node_ind; /*mapping of global node number to local node number*/
   hash_map* cell_ind; /*mapping of global cell number to local cell number*/
@@ -220,7 +229,11 @@ void generateDotGraph(ugraph* g, const char* fileName, partition* ps) {
 
 void showGraph(ugraph* g) {
   for (uint32_t i = 0; i < g->num_nodes; ++i) {
-    printf("%u : ", i);
+    if (g->colours != NULL) {
+      printf("%u (colour %d): ", i, g->colours[i]);
+    } else {
+      printf("%u :", i);
+    }
     for (uint32_t j = 0 ; j < g->adj_sizes[i]; ++j) {
       printf("%u, ", g->adj_list[i][j]);
     }
@@ -386,10 +399,10 @@ int main(int argc, char* argv[]) {
 
     ps[i].node_ind = createHashMap(PRIME);
     ps[i].cell_ind = createHashMap(PRIME);
-    int nodes_added = 0;
+    uint32_t nodes_added = 0;
     for (uint32_t j = 0; j < ps[i].cells.len; ++j) {
       addToHashMap(ps[i].cell_ind, ps[i].cells.arr[j], j);
-      for (int k = 0; k < 4; ++k) {
+      for (uint32_t k = 0; k < 4; ++k) {
         nodes_added += addToHashMap(ps[i].node_ind, cell[4*ps[i].cells.arr[j] + k], nodes_added);
       }
     }
@@ -402,29 +415,69 @@ int main(int argc, char* argv[]) {
       }
     }
     uint32_t* pcptr = malloc((ps[i].cells.len + 1) * sizeof(*pcptr));
-    for (int j = 0; j < ps[i].cells.len + 1; ++j) {
+    for (uint32_t j = 0; j < ps[i].cells.len + 1; ++j) {
       pcptr[j] = 4*j;
     }
     uint32_t* pcpart = malloc(ps[i].cells.len * sizeof(*pcpart));
     uint32_t* pnpart = malloc(nodes_added * sizeof(*pnpart));
-    int nparts = 2;
+    uint32_t nparts = 2;
 //    printf("Partitioning partition %d\n", i);
-    METIS_PartMeshNodal((int*)&ps[i].cells.len, &nodes_added, (int*)pcptr, (int*)ps[i].c2n, NULL, NULL, &nparts, NULL, NULL, &objval, (int*)pcpart, (int*)pnpart);
-
-    ps[i].ips[0] = ps[i].ips[1] = ps[i].ips[2] = 0;
-    for (int j = 0; j < ps[i].cells.len; ++j) {
-      int part[4];
-      for (int k = 0; k < 4; ++k) {
+    METIS_PartMeshNodal((int*)&ps[i].cells.len, (int*)&nodes_added, (int*)pcptr, (int*)ps[i].c2n, NULL, NULL,(int*) &nparts, NULL, NULL, &objval, (int*)pcpart, (int*)pnpart);
+    free(pcptr);
+    pcptr = NULL;
+    initArr(&ps[i].iparts[0].cells, CELLS_PER_PARTITION / 2);
+    initArr(&ps[i].iparts[1].cells, CELLS_PER_PARTITION / 2);
+    initArr(&ps[i].iparts[2].cells, CELLS_PER_PARTITION / 40);
+    for (uint32_t j = 0; j < ps[i].cells.len; ++j) {
+      uint32_t part[4];
+      for (uint32_t k = 0; k < 4; ++k) {
         part[k] = pnpart[ps[i].c2n[4*j+k]];
       }
       if (!(part[0] == part[1] && part[0] == part[2] && part[0] == part[3])) {
-        ++ps[i].ips[2];
+        addToArr(&ps[i].iparts[2].cells, j);
       } else {
-        ++ps[i].ips[part[0]];
+        addToArr(&ps[i].iparts[part[0]].cells, j);
       }
     }
-    printf("Partition %d is partitioned in partitions of sizes %d, %d and %d intra partition halo cells\n", i, ps[i].ips[0], ps[i].ips[1], ps[i].ips[2]);
+    printf("Partition %d is partitioned in partitions of sizes %d, %d and %d intra partition halo cells\n",
+           i,
+           ps[i].iparts[0].cells.len,
+           ps[i].iparts[1].cells.len,
+           ps[i].iparts[2].cells.len
+          );
 
+    for (uint32_t j = 0; j < 3; ++j) {
+      ipartition* ip = &ps[i].iparts[j];
+      ip->node_ind = createHashMap(SMALL_PRIME);
+      ip->cell_ind = createHashMap(SMALL_PRIME);
+      ip->c2n = malloc(ip->cells.len * 4 * sizeof(*ip->c2n));
+      uint32_t nadded = 0;
+      for (uint32_t k = 0; k < ip->cells.len; ++k) {
+        addToHashMap(ip->cell_ind, ip->cells.arr[k], k);
+        for (uint32_t kk = 0; kk < 4; ++kk) {
+          nadded += addToHashMap(ip->node_ind, ps[i].c2n[4*k + kk], nadded);
+        }
+      }
+      for (uint32_t k = 0; k < ip->cells.len; ++k) {
+        for (uint32_t kk = 0; kk < 4; ++kk) {
+          uint32_t v = getValue(ip->node_ind, ps[i].c2n[4*k + kk]);
+          ip->c2n[4*k + kk] = v;
+        }
+      }
+      pcptr = malloc((ip->cells.len + 1) * sizeof(*pcptr));
+      for (uint32_t k = 0; k < ip->cells.len + 1; ++k) {
+        pcptr[k] = 4*k;
+      }
+      nparts = BOTTOM_LEVEL_PARTITIONS;
+      uint32_t* intcpart = malloc(ip->cells.len * sizeof(*intcpart));
+      uint32_t* intnpart = malloc(nadded * sizeof(*intnpart));
+      METIS_PartMeshNodal((int*)&ip->cells.len,(int*)&nadded, (int*)pcptr, (int*)ip->c2n, NULL, NULL, (int*)&nparts, NULL, NULL, &objval, (int*)intcpart, (int*)intnpart);
+      free(pcptr);
+      ip->cg = generateGraph(intnpart, ip->c2n, 4, ip->cells.len, nparts);
+      colourGraph(ip->cg);
+      printf("internal graph for partition %d of partition %d is:\n", j, i);
+      showGraph(ip->cg);
+    }
   }
 
   uint32_t part_nodes = 0;
@@ -482,9 +535,10 @@ int main(int argc, char* argv[]) {
     printf("----------------------------------\n");
   }
 
-  showGraph(pg);
   printf("Colouring partition graph...\n");
   colourGraph(pg);
+  printf("Top level graph of mesh partitions:\n");
+  showGraph(pg);
   const char* fileName = "meshColoured.dot";
   printf("Writing partition graph to %s ...\n", fileName);
   generateDotGraph(pg, fileName, ps);
