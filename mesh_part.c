@@ -66,7 +66,6 @@ typedef struct partition_struct {
   uint32_t nneighbours;
   uint32_t* c2n; /*Cells to nodes local map*/
 
-  uint32_t ips[3]; /*internal partition sizes*/
   ipartition iparts[3]; /*Internal partitions, 0,1 are partitions, 2 is intra partition halo, locally numbered*/
 
   hash_map* node_ind; /*mapping of global node number to local node number*/
