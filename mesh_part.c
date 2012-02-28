@@ -1,3 +1,20 @@
+/*
+  Mesh preparation code for the MaxCompiler implementation of Airfoil.
+  The idea is to partition the mesh into chunks that will fit in the BRAM
+  of the FPGA. Each of those chunks needs to be partitioned in 2, so that
+  we can process one of them while reading in the other, without overlap (double buffering).
+  Each of those two partitions has to be partitioned into more partitions that will be coloured
+  so that any cell that is accessed will not be accessed within the next C number of accesses
+  so that the arithmetic pipeline can compute the contribution of that cell to the overall value.
+  The top-level chunks/partitions share halo data between them that will be reduced (with addition)
+  on the host. The code has to determine the halos between every pair of partitions and schedule them
+  for streaming to the chip. It also needs to compute an iteration order for the partition data. The
+  FPGA itself will not be accessing the DRAM in a random way.
+
+  @author: Kyrylo Tkachov (kt208@imperial.ac.uk)
+*/
+
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
