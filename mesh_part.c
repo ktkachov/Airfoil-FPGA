@@ -72,8 +72,10 @@ typedef struct internal_partition_struct {
   arr_t cells;
   ugraph* cg; /*Connectivity graph for internal partitions*/
   uint32_t* c2n; /* cells to nodes local map*/
-  hash_map* node_ind; /*global to local node numbers*/
-  hash_map* cell_ind;
+  hash_map* g2l_nodes; /*global to local node numbers*/
+  hash_map* g2l_cells; /*global to local cell numbers*/
+  hash_map* l2g_nodes;
+  hash_map* l2g_cells;
 } ipartition;
 
 typedef struct partition_struct {
@@ -83,10 +85,10 @@ typedef struct partition_struct {
   uint32_t nneighbours;
   uint32_t* c2n; /*Cells to nodes local map*/
 
-  ipartition iparts[3]; /*Internal partitions, 0,1 are partitions, 2 is intra partition halo, locally numbered*/
+  ipartition iparts[3]; /*Internal partitions: 0,1 are partitions, 2 is intra partition halo, locally numbered*/
 
-  hash_map* node_ind; /*mapping of global node number to local node number*/
-  hash_map* cell_ind; /*mapping of global cell number to local cell number*/
+  hash_map* g2l_nodes; /*mapping of global node number to local node number*/
+  hash_map* g2l_cells; /*mapping of global cell number to local cell number*/
 
   arr_t haloCells;
   arr_t haloNodes;
@@ -113,9 +115,6 @@ void showGraph(ugraph*);
 */
 ugraph* generateGraph(uint32_t* npart, uint32_t* map, uint32_t dim, uint32_t len, uint32_t num_parts) {
   uint32_t** adj_list = malloc(num_parts * sizeof(*adj_list));
-  if (!adj_list) {
-    fprintf(stderr, "ERROR! could not allocate memory for adjacency list\n");
-  }
   uint32_t* adj_sizes = calloc(sizeof(*adj_sizes), num_parts);
   for (uint32_t i = 0; i < num_parts; ++i) {
     adj_list[i] = malloc(num_parts * sizeof(*adj_list[i]));
@@ -379,7 +378,7 @@ int main(int argc, char* argv[]) {
   clock_t start, end;
   start = clock();
  
-  /* Cell pointer for METIS, since all cells have 4 nodes, this is not very interesting, but METIS requires it*/
+  /* Cell pointer for METIS. Since all cells have 4 nodes, this is not very interesting, but METIS requires it*/
   uint32_t* cptr = malloc((ncell+1) * sizeof(*cptr));
   for (uint32_t i = 0; i < ncell+1; ++i) {
     cptr[i] =4*i;
@@ -455,13 +454,13 @@ int main(int argc, char* argv[]) {
       We use hash maps to store the mapping of global cell and node numbers to local numbers.
       We need local cell and node numbers in order to partition the partitions internally.
     */
-    ps[i].node_ind = createHashMap(PRIME);
-    ps[i].cell_ind = createHashMap(PRIME);
+    ps[i].g2l_nodes = createHashMap(PRIME);
+    ps[i].g2l_cells = createHashMap(PRIME);
     uint32_t nodes_added = 0;
     for (uint32_t j = 0; j < ps[i].cells.len; ++j) {
-      addToHashMap(ps[i].cell_ind, ps[i].cells.arr[j], j);
+      addToHashMap(ps[i].g2l_cells, ps[i].cells.arr[j], j);
       for (uint32_t k = 0; k < 4; ++k) {
-        nodes_added += addToHashMap(ps[i].node_ind, cell[4*ps[i].cells.arr[j] + k], nodes_added);
+        nodes_added += addToHashMap(ps[i].g2l_nodes, cell[4*ps[i].cells.arr[j] + k], nodes_added);
       }
     }
     printf("Nodes added %d in partition %d\n", nodes_added, i);
@@ -471,7 +470,7 @@ int main(int argc, char* argv[]) {
     */
     for (uint32_t j = 0; j < ps[i].cells.len; ++j) {
       for (uint32_t k = 0; k < 4; ++k) {
-        uint32_t v = getValue(ps[i].node_ind, cell[4*ps[i].cells.arr[j]+k]);
+        uint32_t v = getValue(ps[i].g2l_nodes, cell[4*ps[i].cells.arr[j]+k]);
         ps[i].c2n[4*j + k] = v;
       }
     }
@@ -518,19 +517,27 @@ int main(int argc, char* argv[]) {
     */
     for (uint32_t j = 0; j < 3; ++j) {
       ipartition* ip = &ps[i].iparts[j];
-      ip->node_ind = createHashMap(SMALL_PRIME);
-      ip->cell_ind = createHashMap(SMALL_PRIME);
+      ip->g2l_nodes = createHashMap(SMALL_PRIME);
+      ip->g2l_cells = createHashMap(SMALL_PRIME);
+      ip->l2g_cells = createHashMap(SMALL_PRIME);
+      ip->l2g_nodes = createHashMap(SMALL_PRIME);
       ip->c2n = malloc(ip->cells.len * 4 * sizeof(*ip->c2n));
       uint32_t nadded = 0;
+      uint32_t nadded_prev = 0;
       for (uint32_t k = 0; k < ip->cells.len; ++k) {
-        addToHashMap(ip->cell_ind, ip->cells.arr[k], k);
+        addToHashMap(ip->g2l_cells, ip->cells.arr[k], k);
+        addToHashMap(ip->l2g_cells, k, ip->cells.arr[k]);
         for (uint32_t kk = 0; kk < 4; ++kk) {
-          nadded += addToHashMap(ip->node_ind, ps[i].c2n[4*k + kk], nadded);
+          nadded += addToHashMap(ip->g2l_nodes, ps[i].c2n[4*k + kk], nadded);
+          if (nadded != nadded_prev) {
+            addToHashMap(ip->l2g_nodes, nadded, ps[i].c2n[4*k + kk]);
+          }
+          nadded_prev = nadded;
         }
       }
       for (uint32_t k = 0; k < ip->cells.len; ++k) {
         for (uint32_t kk = 0; kk < 4; ++kk) {
-          uint32_t v = getValue(ip->node_ind, ps[i].c2n[4*k + kk]);
+          uint32_t v = getValue(ip->g2l_nodes, ps[i].c2n[4*k + kk]);
           ip->c2n[4*k + kk] = v;
         }
       }
@@ -597,7 +604,7 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  /*Diagnostic messages, etc*/
+  /*Diagnostic messages, etc...*/
   for (uint32_t i = 0; i < num_parts; ++i) {
     uint32_t total = 0;
     for (uint32_t j = 0; j < ps[i].nneighbours; ++j) {
