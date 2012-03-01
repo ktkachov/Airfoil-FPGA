@@ -152,7 +152,7 @@ void colourGraph(ugraph* graph) {
   for (uint32_t i = 0; i < nv; ++i) {
     uint32_t c = 0;
     uint32_t repeat = 1;
-    while (c < ncolours && repeat) {
+    while (repeat) {
       uint32_t a = 1; //colour availble
       for (uint32_t v = 0; v < graph->adj_sizes[i] && a; ++v) {
         if (colours[graph->adj_list[i][v]] == c) {
