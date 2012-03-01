@@ -623,7 +623,7 @@ int main(int argc, char* argv[]) {
   printf("Writing partition graph to %s ...\n", fileName);
   generateDotGraph(pg, fileName, ps);
   end = clock();
-  printf("Nodes: %u, Edges: %u, Cells: %u\n", nnode, nedge, ncell);
+  printf("Nodes: %u, Edges: %u, Cells: %u, number of partitions: %u\n", nnode, nedge, ncell, num_parts);
   printf("time taken: %lf seconds\n", (double)(end - start)/CLOCKS_PER_SEC);
   
 }
