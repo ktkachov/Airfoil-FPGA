@@ -25,7 +25,7 @@
 #include "metis.h"
 #include "hash_map.h"
 
-#define EDGES_PER_PARTITION 80000
+#define EDGES_PER_PARTITION (1<<14)
 #define NODES_PER_PARTITION (EDGES_PER_PARTITION / 2)
 #define CELLS_PER_PARTITION (EDGES_PER_PARTITION / 2)
 

@@ -10,6 +10,10 @@ all: mesh_part.c hash_map.h
 airfoil: airfoil.cpp
 	g++ -o airfoil -O3 -lm $<
 
+svg:
+	bash ./dot2svg *.dot
+
 clean:
 	rm -f mesh
 	rm -f airfoil
+	rm -f *.svg
