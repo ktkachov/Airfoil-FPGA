@@ -76,6 +76,7 @@ typedef struct internal_partition_struct {
   hash_map* g2l_cells; /*global to local cell numbers*/
   hash_map* l2g_nodes;
   hash_map* l2g_cells;
+  arr_t* parts_cells;  /* Bottom level partition cells*/
 } ipartition;
 
 typedef struct partition_struct {
@@ -407,8 +408,8 @@ int main(int argc, char* argv[]) {
 
   /*Assigning edges to partitions*/
   for (uint32_t i = 0; i < nedge; ++i) {
-    uint32_t n1 = cpart[ecell[2*i]];
-    uint32_t n2 = cpart[ecell[2*i+1]];
+    uint32_t n1 = npart[edge[2*i]];
+    uint32_t n2 = npart[edge[2*i+1]];
     addToArr(&ps[n1].edges, i);
     addToArr(&ps[n2].edges, i);
   }
@@ -449,7 +450,6 @@ int main(int argc, char* argv[]) {
 
   printf("Assigning cell-to-nodes maps to partitions...\n");
   for (uint32_t i = 0; i < num_parts; ++i) {
-
     /*
       We use hash maps to store the mapping of global cell and node numbers to local numbers.
       We need local cell and node numbers in order to partition the partitions internally.
@@ -502,6 +502,9 @@ int main(int argc, char* argv[]) {
         addToArr(&ps[i].iparts[part[0]].cells, j);
       }
     }
+    removeDupsArr(&ps[i].iparts[0].cells);
+    removeDupsArr(&ps[i].iparts[1].cells);
+    removeDupsArr(&ps[i].iparts[2].cells);
     printf("Partition %d is partitioned in partitions of sizes %d, %d and %d intra partition halo cells\n",
            i,
            ps[i].iparts[0].cells.len,
@@ -552,6 +555,19 @@ int main(int argc, char* argv[]) {
       free(pcptr);
       ip->cg = generateGraph(intnpart, ip->c2n, 4, ip->cells.len, nparts);
       colourGraph(ip->cg);
+      ip->parts_cells = malloc(nparts * sizeof(*ip->parts_cells));
+      for (uint32_t k = 0; k < nparts; ++k) {
+        initArr(&ip->parts_cells[k], ip->cells.len / nparts);
+      }
+      for (uint32_t k = 0; k < ip->cells.len; ++k) {
+        for (short kk = 0; kk < 4; ++kk) {
+          addToArr(&ip->parts_cells[intnpart[ip->c2n[4*k+kk]]], k);
+        }
+      }
+      for (uint32_t k = 0; k < nparts; ++k) {
+        removeDupsArr(&ip->parts_cells[k]);
+        printf("bottom level partition %d of partition %d of partition %d has %d cells\n", k, j, i, ip->parts_cells[k].len);
+      }
 //      printf("internal graph for partition %d of partition %d is:\n", j, i);
 //      showGraph(ip->cg);
     }
