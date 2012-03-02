@@ -25,9 +25,9 @@
 #include "metis.h"
 #include "hash_map.h"
 
-#define EDGES_PER_PARTITION (1<<14)
-#define NODES_PER_PARTITION (EDGES_PER_PARTITION / 2)
-#define CELLS_PER_PARTITION (EDGES_PER_PARTITION / 2)
+#define CELLS_PER_PARTITION (1<<14)
+#define EDGES_PER_PARTITION (CELLS_PER_PARTITION * 2)
+#define NODES_PER_PARTITION (CELLS_PER_PARTITION)
 
 /*This depends on the arithmetic pipeline depth on the FPGA*/
 #define BOTTOM_LEVEL_PARTITIONS 17
@@ -552,8 +552,8 @@ int main(int argc, char* argv[]) {
       free(pcptr);
       ip->cg = generateGraph(intnpart, ip->c2n, 4, ip->cells.len, nparts);
       colourGraph(ip->cg);
-      printf("internal graph for partition %d of partition %d is:\n", j, i);
-      showGraph(ip->cg);
+//      printf("internal graph for partition %d of partition %d is:\n", j, i);
+//      showGraph(ip->cg);
     }
   }
 
