@@ -72,6 +72,7 @@ typedef struct internal_partition_struct {
   hash_map* l2g_cells;
   arr_t* parts_cells;  /* Bottom level partition cells*/
   arr_t* parts_edges; /*Bottom level partition edges globally numbered*/
+  arr_t* parts_nodes; /*Bottom level partition nodes globally numbered*/
 } ipartition;
 
 typedef struct partition_struct {
@@ -563,19 +564,32 @@ int main(int argc, char* argv[]) {
       free(pcptr);
       ip->cg = generateGraph(intnpart, ip->c2n, 4, ip->cells.len, nparts);
       colourGraph(ip->cg);
+      ip->parts_nodes = malloc(nparts * sizeof(*ip->parts_nodes));
+      for (uint32_t k = 0; k < nparts; ++k) {
+        initArr(&ip->parts_nodes[k], ip->cells.len / nparts);
+      }
+      for (uint32_t k = 0; k < nadded; ++k) {
+        addToArr(&ip->parts_nodes[intnpart[k]], ps[i].nodes.arr[k]);
+      }
       ip->parts_cells = malloc(nparts * sizeof(*ip->parts_cells));
       ip->parts_edges = malloc(nparts * sizeof(*ip->parts_edges));
+      hash_set* cell_sets[nparts];
       for (uint32_t k = 0; k < nparts; ++k) {
-        initArr(&ip->parts_cells[k], ip->cells.len / nparts);
+  //      initArr(&ip->parts_cells[k], ip->cells.len / nparts);
+        cell_sets[k] = createHashSet(SMALL_PRIME);
       }
       for (uint32_t k = 0; k < ip->cells.len; ++k) {
         for (short kk = 0; kk < 4; ++kk) {
-          addToArr(&ip->parts_cells[intnpart[ip->c2n[4*k+kk]]], k);
+          addToHashSet(cell_sets[intnpart[ip->c2n[4*k+kk]]], k);
+//          addToArr(&ip->parts_cells[intnpart[ip->c2n[4*k+kk]]], k);
         }
       }
       uint32_t se = 0;
       for (uint32_t k = 0; k < nparts; ++k) {
-        removeDupsArr(&ip->parts_cells[k]);
+        ip->parts_cells[k] = *toArr(cell_sets[k]);
+        destroyHashSet(cell_sets[k]);
+//        removeDupsArr(&ip->parts_cells[k]);
+        
         hash_set* edge_set = createHashSet(SMALL_PRIME);
         for (uint32_t kk = 0; kk < ip->parts_cells[k].len; ++kk) {
           for (short jj = 0; jj < cellse_helper[ps[i].cells.arr[ip->cells.arr[kk]]]; ++jj) {
@@ -585,7 +599,7 @@ int main(int argc, char* argv[]) {
         ip->parts_edges[k] = *toArr(edge_set);
         destroyHashSet(edge_set);
         se += ip->parts_edges[k].len;
-        printf("bottom level partition %d of partition %d of partition %d has %d cells and %d edges\n", k, j, i, ip->parts_cells[k].len, ip->parts_edges[k].len);
+        printf("bottom level partition %d of partition %d of partition %d has %d cells and %d edges and %d nodes\n", k, j, i, ip->parts_cells[k].len, ip->parts_edges[k].len, ip->parts_nodes[k].len);
       }
       p_edges += se;
 //      printf("internal graph for partition %d of partition %d is:\n", j, i);
