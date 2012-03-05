@@ -4,7 +4,7 @@ CCINC = -I/homes/kt208/metis/metis_install/include/
 LDINC = -L/homes/kt208/metis/metis_install/lib/
 LDFLAGS = -lm -lmetis
 
-all: mesh_part.c airfoil_utils.h 
+all: mesh_part.c hash_map.h 
 	$(CC) -o mesh $(CCFLAGS) $(CCINC) $(LDINC) $< $(LDFLAGS)
 
 airfoil: airfoil.cpp

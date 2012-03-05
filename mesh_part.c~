@@ -287,6 +287,21 @@ int main(int argc, char* argv[]) {
 
   uint32_t nnode,ncell,nedge,nbedge;
   
+  
+  hash_set* set = createHashSet(SMALL_PRIME);
+  addToHashSet(set, 3);
+  addToHashSet(set, 6);
+  addToHashSet(set, 3);
+  addToHashSet(set, 5);
+  arr_t* a = toArr(set);
+  for (int i = 0; i < a->len; ++i) {
+    printf("%d [%d | %d]\n",a->arr[i], i, a->len);
+  }
+  return 1;
+  
+  
+  
+  
   /* read in grid */
 
   printf("reading in grid \n");
