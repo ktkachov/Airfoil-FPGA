@@ -360,12 +360,13 @@ int main(int argc, char* argv[]) {
 //     printf("%d:%d\n", i/2, ecell[i]);
 //   }
 //   printf("-----------------------\n");
+/*
    for (int i = 0; i < ncell; ++i) {
       if (cellse_helper[i] != 4) {
         printf("%d - %d\n", i, cellse_helper[i]);
       }
    }
-  
+*/
 //   free(cellse_helper);
   
   clock_t start, end;
@@ -387,12 +388,15 @@ int main(int argc, char* argv[]) {
   METIS_PartMeshNodal(&nc, &nn, (int*)cptr, (int*)cell, NULL, NULL, &num_parts, NULL, NULL, &objval, (int*)cpart, (int*)npart);
 
   /*Initialising our partition structures*/
-  partition* ps = (partition*)malloc(num_parts * sizeof(*ps));
+  partition* ps = malloc(num_parts * sizeof(*ps));
   
-//   hash_set* cell_maps[num_parts];
+  hash_set* edge_maps[num_parts];
+  hash_set* node_maps[num_parts];
+  hash_set* cell_maps[num_parts];
   for (uint32_t i = 0; i < num_parts; ++i) {
-
-//     cell_maps[i] = createHashSet(PRIME);
+    node_maps[i] = createHashSet(PRIME);
+    edge_maps[i] = createHashSet(PRIME);
+    cell_maps[i] = createHashSet(PRIME);
     initArr(&ps[i].edges, EDGES_PER_PARTITION);
     initArr(&ps[i].nodes, NODES_PER_PARTITION);
     initArr(&ps[i].cells, CELLS_PER_PARTITION);
@@ -404,9 +408,13 @@ int main(int argc, char* argv[]) {
   /*Assigning edges to partitions*/
   for (uint32_t i = 0; i < nedge; ++i) {
     uint32_t n1 = npart[edge[2*i]];
-    uint32_t n2 = npart[edge[2*i+1]];
-    addToArr(&ps[n1].edges, i);
-    addToArr(&ps[n2].edges, i);
+//    uint32_t n2 = npart[edge[2*i+1]];
+    addToHashSet(edge_maps[n1], i);
+//    addToHashSet(edge_maps[n2], i);
+  }
+  for (uint32_t i = 0; i < num_parts; ++i) {
+    ps[i].edges = *toArr(edge_maps[i]);
+    destroyHashSet(edge_maps[i]);
   }
   printf("Assigned edges to partitions\n");
 
@@ -417,28 +425,36 @@ int main(int argc, char* argv[]) {
   */
   
   for (uint32_t i = 0; i < ncell; ++i) {
-    int n = cpart[i];
+  //  int n = cpart[i];
 //     addToHashSet(cell_maps[n], i);
-    addToArr(&ps[n].cells, i);
+//    addToArr(&ps[n].cells, i);
     uint32_t p[4];
     for (uint32_t j = 0; j < 4; ++j) {
       p[j] = npart[cell[4*i+j]];
-      addToArr(&ps[p[j]].nodes, cell[4*i+j]);
+//      addToArr(&ps[p[j]].nodes, cell[4*i+j]);
+      addToHashSet(node_maps[p[j]], cell[4*i+j]);
     }
     if (!(p[0] == p[1] && p[0] == p[1] && p[0] == p[2] && p[0] == p[3])) {
       for (uint32_t j = 0; j < 4; ++j) {
         uint32_t t = p[j];
         addToArr(&ps[t].haloCells, i);
+        addToHashSet(cell_maps[t], i);
       }
     } else {
       addToArr(&ps[p[0]].non_halo_cells, i);
+      addToHashSet(cell_maps[p[0]], i);
     }
   }
  
   /*Clean up the structures populated above and initialise the local cells-to-nodes maps*/
   for (uint32_t i = 0; i < num_parts; ++i) {
+    ps[i].nodes = *toArr(node_maps[i]);
+    destroyHashSet(node_maps[i]);
     removeDupsArr(&(ps[i].nodes));
-    removeDupsArr(&(ps[i].cells));
+
+    ps[i].cells = *toArr(cell_maps[i]);
+    destroyHashSet(cell_maps[i]);
+//    removeDupsArr(&(ps[i].cells));
     removeDupsArr(&(ps[i].edges));
     removeDupsArr(&(ps[i].haloCells));
     removeDupsArr(&(ps[i].non_halo_cells));
@@ -447,6 +463,7 @@ int main(int argc, char* argv[]) {
 
 
   uint32_t p_edges = 0;
+  uint32_t p_cells = 0;
   for (uint32_t i = 0; i < num_parts; ++i) {
     /*
       We use hash maps to store the mapping of global cell and node numbers to local numbers.
@@ -463,7 +480,11 @@ int main(int argc, char* argv[]) {
         nodes_added += addToHashMap(ps[i].g2l_nodes, cell[4*ps[i].cells.arr[j] + k], nodes_added);
       }
     }
-    printf("Nodes added %d in partition %d\n", nodes_added, i);
+    for (uint32_t j = 0; j < ps[i].edges.len; ++j) {
+      nodes_added += addToHashMap(ps[i].g2l_nodes, edge[2*ps[i].edges.arr[j]], nodes_added);
+      nodes_added += addToHashMap(ps[i].g2l_nodes, edge[2*ps[i].edges.arr[j]+1], nodes_added);
+    }
+    printf("Nodes added %d in partition %d, nodes added in level above: %d\n", nodes_added, i, ps[i].nodes.len);
 
     /*
       Populate the local cells-to-nodes map, using the hash maps that we filled in above
@@ -492,29 +513,46 @@ int main(int argc, char* argv[]) {
       initArr(&ps[i].iparts[j].cells, CELLS_PER_PARTITION / 2);
       initArr(&ps[i].iparts[j].edges, EDGES_PER_PARTITION / 2);
     }
-    for (uint32_t j = 0; j < ps[i].cells.len; ++j) {
-      uint32_t part[4];
-      uint32_t es[4]; /*edges belonging to that cell*/
-      for (uint32_t k = 0; k < 4; ++k) {
-        part[k] = pnpart[ps[i].c2n[4*j+k]];
-        es[k] = cellse[4 * ps[i].cells.arr[j] + k];
-      }
-      if (!(part[0] == part[1] && part[0] == part[2] && part[0] == part[3])) {
-        addToArr(&ps[i].iparts[2].cells, j);
-        for (short kk = 0; kk < 4; ++kk) {    
-          addToArr(&ps[i].iparts[2].edges, es[kk]);
-        }
+    hash_set* edge_sets[3];
+    hash_set* cell_sets[3];
+    for (short j = 0; j < 3; ++j) {
+      edge_sets[j] = createHashSet(SMALL_PRIME);
+      cell_sets[j] = createHashSet(SMALL_PRIME);
+    }
+    for (uint32_t j = 0; j < ps[i].edges.len; ++j) {
+      uint32_t p[2];
+    //  printf("ps[%d].edges[%d] = %d\n", i, j, ps[i].edges.arr[j]);
+      p[0] = pnpart[getValue(ps[i].g2l_nodes, edge[2*ps[i].edges.arr[j]])];
+      p[1] = pnpart[getValue(ps[i].g2l_nodes, edge[2*ps[i].edges.arr[j]+1])];
+      if (p[0] != p[1]) {
+        addToHashSet(edge_sets[2], ps[i].edges.arr[j]);
       } else {
-        addToArr(&ps[i].iparts[part[0]].cells, j);  
-        for (short kk = 0; kk < 4; ++kk) {
-          addToArr(&ps[i].iparts[part[0]].edges, es[kk]);
-        }
+        addToHashSet(edge_sets[p[0]], ps[i].edges.arr[j]);
       }
     }
     for (short j = 0; j < 3; ++j) {
-      removeDupsArr(&ps[i].iparts[j].edges);
-      removeDupsArr(&ps[i].iparts[j].cells);
+      ps[i].iparts[j].edges = *toArr(edge_sets[j]);
+      destroyHashSet(edge_sets[j]);
     }
+    for (uint32_t j = 0; j < ps[i].cells.len; ++j) {
+      uint32_t part[4];
+      for (uint32_t k = 0; k < 4; ++k) {
+        part[k] = pnpart[ps[i].c2n[4*j+k]];
+      }
+      if (!(part[0] == part[1] && part[0] == part[2] && part[0] == part[3])) {
+        addToHashSet(cell_sets[2], j);
+//        addToArr(&ps[i].iparts[2].cells, j);
+      } else {
+        addToHashSet(cell_sets[part[0]], j);
+//        addToArr(&ps[i].iparts[part[0]].cells, j);
+      }
+    }
+    for (short j = 0; j < 3; ++j) {
+      ps[i].iparts[j].cells = *toArr(cell_sets[j]);
+      destroyHashSet(cell_sets[j]);
+  //    removeDupsArr(&ps[i].iparts[j].cells);
+    }
+    p_cells += ps[i].iparts[0].cells.len + ps[i].iparts[1].cells.len + ps[i].iparts[2].cells.len;
     printf("Partition %d is partitioned in partitions of sizes %d, %d and %d intra partition halo cells\n",
            i,
            ps[i].iparts[0].cells.len,
@@ -547,6 +585,13 @@ int main(int argc, char* argv[]) {
           nadded_prev = nadded;
         }
       }
+      uint32_t na = nadded;
+
+      for (uint32_t k = 0; k < ip->edges.len; ++k) {
+        na += addToHashMap(ip->g2l_nodes, getValue(ps[i].g2l_nodes, edge[2*ip->edges.arr[k]]), na);
+        na += addToHashMap(ip->g2l_nodes, getValue(ps[i].g2l_nodes, edge[2*ip->edges.arr[k]+1]), na);
+      }
+      printf("nadded:%d, na - nadded = %d\n", nadded, na - nadded);
       for (uint32_t k = 0; k < ip->cells.len; ++k) {
         for (short kk = 0; kk < 4; ++kk) {
           uint32_t v = getValue(ip->g2l_nodes, ps[i].c2n[4*k + kk]);
@@ -559,9 +604,10 @@ int main(int argc, char* argv[]) {
       }
       nparts = BOTTOM_LEVEL_PARTITIONS;
       uint32_t* intcpart = malloc(ip->cells.len * sizeof(*intcpart));
-      uint32_t* intnpart = malloc(nadded * sizeof(*intnpart));
-      METIS_PartMeshNodal((int*)&ip->cells.len,(int*)&nadded, (int*)pcptr, (int*)ip->c2n, NULL, NULL, (int*)&nparts, NULL, NULL, &objval, (int*)intcpart, (int*)intnpart);
+      uint32_t* intnpart = malloc(na * sizeof(*intnpart));
+      METIS_PartMeshNodal((int*)&ip->cells.len,(int*)&na, (int*)pcptr, (int*)ip->c2n, NULL, NULL, (int*)&nparts, NULL, NULL, &objval, (int*)intcpart, (int*)intnpart);
       free(pcptr);
+
       ip->cg = generateGraph(intnpart, ip->c2n, 4, ip->cells.len, nparts);
       colourGraph(ip->cg);
       ip->parts_nodes = malloc(nparts * sizeof(*ip->parts_nodes));
@@ -575,32 +621,37 @@ int main(int argc, char* argv[]) {
       ip->parts_edges = malloc(nparts * sizeof(*ip->parts_edges));
       hash_set* cell_sets[nparts];
       for (uint32_t k = 0; k < nparts; ++k) {
-  //      initArr(&ip->parts_cells[k], ip->cells.len / nparts);
         cell_sets[k] = createHashSet(SMALL_PRIME);
       }
       for (uint32_t k = 0; k < ip->cells.len; ++k) {
         for (short kk = 0; kk < 4; ++kk) {
-          addToHashSet(cell_sets[intnpart[ip->c2n[4*k+kk]]], k);
-//          addToArr(&ip->parts_cells[intnpart[ip->c2n[4*k+kk]]], k);
+          uint32_t n = intnpart[ip->c2n[4 * k + kk]];
+          addToHashSet(cell_sets[n], k);
         }
       }
       uint32_t se = 0;
+      hash_set* edge_sets[nparts];
+      for (uint32_t k = 0; k < nparts; ++k) {
+        edge_sets[k] = createHashSet(SMALL_PRIME);
+      }
+      for (uint32_t k = 0; k < ip->edges.len; ++k) {
+        uint32_t p[2];
+        p[0] = intnpart[getValue(ip->g2l_nodes, getValue( ps[i].g2l_nodes, edge[ 2 * ip->edges.arr[k] ] ))];
+        p[1] = intnpart[getValue(ip->g2l_nodes, getValue( ps[i].g2l_nodes, edge[ 2 * ip->edges.arr[k] + 1 ] ))];
+        addToHashSet(edge_sets[p[0]], ip->edges.arr[k]);
+      }
+      uint32_t bottom_cells = 0;
       for (uint32_t k = 0; k < nparts; ++k) {
         ip->parts_cells[k] = *toArr(cell_sets[k]);
         destroyHashSet(cell_sets[k]);
-//        removeDupsArr(&ip->parts_cells[k]);
         
-        hash_set* edge_set = createHashSet(SMALL_PRIME);
-        for (uint32_t kk = 0; kk < ip->parts_cells[k].len; ++kk) {
-          for (short jj = 0; jj < cellse_helper[ps[i].cells.arr[ip->cells.arr[kk]]]; ++jj) {
-            addToHashSet(edge_set, cellse[4*ps[i].cells.arr[ip->cells.arr[kk]] + jj]);
-          }
-        }
-        ip->parts_edges[k] = *toArr(edge_set);
-        destroyHashSet(edge_set);
+        ip->parts_edges[k] = *toArr(edge_sets[k]);
+        destroyHashSet(edge_sets[k]);
         se += ip->parts_edges[k].len;
         printf("bottom level partition %d of partition %d of partition %d has %d cells and %d edges and %d nodes\n", k, j, i, ip->parts_cells[k].len, ip->parts_edges[k].len, ip->parts_nodes[k].len);
+        bottom_cells += ip->parts_cells[k].len;
       }
+      printf("bottom level cells = %d\n", bottom_cells);
       p_edges += se;
 //      printf("internal graph for partition %d of partition %d is:\n", j, i);
 //      showGraph(ip->cg);
@@ -674,6 +725,7 @@ int main(int argc, char* argv[]) {
   generateDotGraph(pg, fileName, ps);
   end = clock();
   printf("Edges counted in partitions: %u\n", p_edges);
+  printf("Cells counted in partitions: %u\n", p_cells);
   printf("Nodes: %u, Edges: %u, Cells: %u, number of partitions: %u\n", nnode, nedge, ncell, num_parts);
   printf("time taken: %lf seconds\n", (double)(end - start)/CLOCKS_PER_SEC);
   
