@@ -139,6 +139,8 @@ arr_t* hash_map_key_set(hash_map* m) {
       p = p->next;
     }
   }
+  res->maxLen = res->len;
+  res->arr = realloc(res->arr, res->len * sizeof(*res->arr));
   return res;
 }
 
@@ -156,9 +158,12 @@ void destroyHashMap(hash_map* m) {
      freeEntryList(m->arr[i].next);
   }
   free(m->arr);
+  free(m);
 }
 
 typedef hash_map hash_set;
+hash_set* createHashSet(uint32_t);
+
 
 int addToHashSet(hash_set* m, uint32_t k) {
   uint32_t hk = k % m->size;
@@ -186,8 +191,63 @@ int addToHashSet(hash_set* m, uint32_t k) {
   return 1;
 } 
 
+hash_set* setDiff(hash_set* s1, hash_set* s2) {
+  hash_set* res = createHashSet(s1->size);
+  for (uint32_t i = 0; i < s1->size; ++i) {
+    struct entry* e = &s1->arr[i];
+    while (e->next != NULL && e->k != EMPTY_ENTRY) {
+      if (!contains(s2, e->k)) {
+        addToHashSet(res, e->k);
+      }
+      e = e->next;
+    }
+  }
+  return res;
+}
+
+hash_set* setIntersection(hash_set* s1, hash_set* s2) {
+  hash_set* res = createHashSet(s1->size);
+  for (uint32_t i = 0; i < s1->size; ++i) {
+    struct entry* e = &s1->arr[i];
+    while (e->next != NULL && e->k != EMPTY_ENTRY) {
+      if (contains(s2, e->k)) {
+        addToHashSet(res, e->k);
+      }
+      e = e->next;
+    }
+  }
+  return res;
+}
+
+hash_set* setUnion(hash_set* s1, hash_set* s2) {
+  hash_set* res = createHashSet(s1->size);
+  for (uint32_t i = 0; i < s1->size; ++i) {
+    struct entry* e = &s1->arr[i];
+    while (e->next != NULL && e->k != EMPTY_ENTRY) {
+      addToHashSet(res, e->k);
+      e = e->next;
+    }
+  }
+  for (uint32_t i = 0; i < s2->size; ++i) {
+    struct entry* e = &s2->arr[i];
+    while (e->next != NULL && e->k != EMPTY_ENTRY) {
+      addToHashSet(res, e->k);
+      e = e->next;
+    }
+  }
+  return res;
+}
+
 arr_t* toArr(hash_set* s) {
   return hash_map_key_set(s);
+}
+
+hash_set* fromArr(arr_t* a) {
+  hash_set* res = createHashSet(a->len / 2);
+  for (uint32_t i = 0; i < a->len; ++i) {
+    addToHashSet(res, a->arr[i]);
+  }
+  return res;
 }
 
 hash_set* createHashSet(uint32_t size) {
