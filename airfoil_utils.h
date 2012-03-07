@@ -166,36 +166,14 @@ hash_set* createHashSet(uint32_t);
 
 
 int addToHashSet(hash_set* m, uint32_t k) {
-  uint32_t hk = k % m->size;
-  uint32_t v = 0;
-  if (m->arr[hk].k == EMPTY_ENTRY) {
-    m->arr[hk].k = k;
-    m->arr[hk].v = v;
-    return 1;
-  }
-  struct entry* e = &(m->arr[hk]);
-  while (e->next != NULL) {
-    if (e->k == k) {
-      return 0;
-    }
-    e = e->next;
-  }
-  if (e->k == k) {
-    return 0;
-  }
-  struct entry* ne = malloc(sizeof(*ne));
-  ne->k = k;
-  ne->v = v;
-  ne->next = NULL;
-  e->next = ne;
-  return 1;
+  return addToHashMap(m, k, 0);
 } 
 
 hash_set* setDiff(hash_set* s1, hash_set* s2) {
   hash_set* res = createHashSet(s1->size);
   for (uint32_t i = 0; i < s1->size; ++i) {
     struct entry* e = &s1->arr[i];
-    while (e->next != NULL && e->k != EMPTY_ENTRY) {
+    while (e != NULL && e->k != EMPTY_ENTRY) {
       if (!contains(s2, e->k)) {
         addToHashSet(res, e->k);
       }
@@ -209,7 +187,7 @@ hash_set* setIntersection(hash_set* s1, hash_set* s2) {
   hash_set* res = createHashSet(s1->size);
   for (uint32_t i = 0; i < s1->size; ++i) {
     struct entry* e = &s1->arr[i];
-    while (e->next != NULL && e->k != EMPTY_ENTRY) {
+    while (e != NULL && e->k != EMPTY_ENTRY) {
       if (contains(s2, e->k)) {
         addToHashSet(res, e->k);
       }
@@ -223,14 +201,14 @@ hash_set* setUnion(hash_set* s1, hash_set* s2) {
   hash_set* res = createHashSet(s1->size);
   for (uint32_t i = 0; i < s1->size; ++i) {
     struct entry* e = &s1->arr[i];
-    while (e->next != NULL && e->k != EMPTY_ENTRY) {
+    while (e != NULL && e->k != EMPTY_ENTRY) {
       addToHashSet(res, e->k);
       e = e->next;
     }
   }
   for (uint32_t i = 0; i < s2->size; ++i) {
     struct entry* e = &s2->arr[i];
-    while (e->next != NULL && e->k != EMPTY_ENTRY) {
+    while (e != NULL && e->k != EMPTY_ENTRY) {
       addToHashSet(res, e->k);
       e = e->next;
     }
