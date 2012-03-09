@@ -437,7 +437,6 @@ int main(int argc, char* argv[]) {
 
 
   uint32_t p_edges = 0;
-  uint32_t p_cells = 0;
   for (uint32_t i = 0; i < num_parts; ++i) {
     printf("Partition %d has %d cells, %d nodes, %d edges\n", i, ps[i].cells.len, ps[i].nodes.len, ps[i].edges.len);
     /*
@@ -665,16 +664,19 @@ int main(int argc, char* argv[]) {
   }
 
   /*Diagnostic messages, etc...*/
+  uint32_t total_halo_cells = 0;
   for (uint32_t i = 0; i < num_parts; ++i) {
     uint32_t total = 0;
     for (uint32_t j = 0; j < ps[i].nneighbours; ++j) {
       printf("Halo region %u-%u has %u cells\n", i, ps[i].neighbours[j], ps[i].hrCells[j].len);
       total += ps[i].hrCells[j].len;
     }
+    total_halo_cells += total;
     printf("Total: %u halo cells\n", total);
     printf("----------------------------------\n");
   }
 
+  float h2nhCells = (float)total_halo_cells / (ncell - total_halo_cells);
   printf("Colouring partition graph...\n");
   colourGraph(pg);
   printf("Top level graph of mesh partitions:\n");
@@ -683,9 +685,8 @@ int main(int argc, char* argv[]) {
   printf("Writing partition graph to %s ...\n", fileName);
   generateDotGraph(pg, fileName, ps);
   end = clock();
-  printf("Edges counted in partitions: %u\n", p_edges);
-  printf("Cells counted in partitions: %u\n", p_cells);
   printf("Nodes: %u, Edges: %u, Cells: %u, number of partitions: %u\n", nnode, nedge, ncell, num_parts);
+  printf("ratio of halo cells to non-halo cells is: %.2f, total halo cells: %d\n", h2nhCells, total_halo_cells);
   printf("time taken: %lf seconds\n", (double)(end - start)/CLOCKS_PER_SEC);
   
 }
