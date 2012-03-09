@@ -521,6 +521,15 @@ int main(int argc, char* argv[]) {
       }
 
     }
+/*
+    hash_set* commonNodes = setIntersection(node_sets[0], node_sets[1]);
+    hash_set* newNodesPart2 = setDiff(node_sets[1], commonNodes);
+    destroyHashSet(commonNodes);
+    destroyHashSet(node_sets[1]);
+    node_sets[1] = newNodesPart2;
+*/
+    destroyHashSet(node_sets[2]);
+    node_sets[2] = setIntersection(node_sets[0], node_sets[1]);
     for (short j = 0; j < 3; ++j) {
       ps[i].iparts[j].edges = *toArr(edge_sets[j]);
 //      destroyHashSet(edge_sets[j]);
@@ -528,6 +537,7 @@ int main(int argc, char* argv[]) {
 //      destroyHashSet(cell_sets[j]);
       ps[i].iparts[j].nodes = *toArr(node_sets[j]);
     }
+
     for (uint32_t j = 0; j < 2; ++j) {
       ipartition* ip = &ps[i].iparts[j];
       ip->g2l_nodes = createHashMap(SMALL_PRIME);
@@ -590,7 +600,6 @@ int main(int argc, char* argv[]) {
      // showGraph(ip->cg);
     }
  
-
     for (short k = 0; k < 2; ++k) {
       hash_set* newCells = setDiff(cell_sets[k], cell_sets[2]);
       destroyHashSet(cell_sets[k]);
@@ -603,7 +612,7 @@ int main(int argc, char* argv[]) {
       destroyHashSet(newNodes);
     }
     for (short k = 0; k < 3; ++k) {
-      printf("sub-partition %d of partition %d has %d cells, %d nodes, %d edges\n", 
+      printf("sub-partition %d of partition %d after common elements removal has %d cells, %d nodes, %d edges\n", 
               k,
               i,
               ps[i].iparts[k].cells.len,
@@ -652,21 +661,6 @@ int main(int argc, char* argv[]) {
       hr_cell_sets[j] = setIntersection(halo_cells[i], halo_cells[ps[i].neighbours[j]]);
       ps[i].hrCells[j] = *toArr(hr_cell_sets[j]);
       destroyHashMap(hr_cell_sets[j]);
-    }
-    /*
-    for (uint32_t j = 0; j < ps[i].haloCells.len; ++j) {
-      for (uint32_t n = 0; n < ps[i].nneighbours; ++n) {
-        if (elemArr(&ps[ps[i].neighbours[n]].haloCells, ps[i].haloCells.arr[j])) {
-          addToArr(&ps[i].hrCells[n], ps[i].haloCells.arr[j]);
-        }
-      }
-    }
-  */
-  }
-  /*Clean up the structures from above*/
-  for (uint32_t i = 0; i < num_parts; ++i) {
-    for (uint32_t j = 0; j < ps[i].nneighbours; ++j) {
-      removeDupsArr(&ps[i].hrCells[j]);
     }
   }
 
