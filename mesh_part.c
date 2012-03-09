@@ -93,6 +93,7 @@ typedef struct partition_struct {
   arr_t non_halo_cells;
   arr_t nodes;
   arr_t* hrCells; /*Halo region cells*/
+  arr_t* hrNodes;
 } partition;
 
 uint32_t elem(uint32_t*, uint32_t, uint32_t);
@@ -416,11 +417,8 @@ int main(int argc, char* argv[]) {
   }
   for (uint32_t i = 0; i < num_parts; ++i) {
     ps[i].edges = *toArr(edge_maps[i]);
-   // destroyHashSet(edge_maps[i]);
     ps[i].cells = *toArr(cell_maps[i]);
-  //  destroyHashSet(cell_maps[i]);
     ps[i].nodes = *toArr(node_maps[i]);
-  //  destroyHashSet(node_maps[i]);
     ps[i].haloCells = *toArr(halo_cells[i]);
 
     hash_set* diff = setDiff(cell_maps[i], halo_cells[i]);
@@ -520,20 +518,11 @@ int main(int argc, char* argv[]) {
       }
 
     }
-/*
-    hash_set* commonNodes = setIntersection(node_sets[0], node_sets[1]);
-    hash_set* newNodesPart2 = setDiff(node_sets[1], commonNodes);
-    destroyHashSet(commonNodes);
-    destroyHashSet(node_sets[1]);
-    node_sets[1] = newNodesPart2;
-*/
     destroyHashSet(node_sets[2]);
     node_sets[2] = setIntersection(node_sets[0], node_sets[1]);
     for (short j = 0; j < 3; ++j) {
       ps[i].iparts[j].edges = *toArr(edge_sets[j]);
-//      destroyHashSet(edge_sets[j]);
       ps[i].iparts[j].cells = *toArr(cell_sets[j]);
-//      destroyHashSet(cell_sets[j]);
       ps[i].iparts[j].nodes = *toArr(node_sets[j]);
     }
 
@@ -646,6 +635,7 @@ int main(int argc, char* argv[]) {
     ps[i].nneighbours = pg->adj_sizes[i];
     memcpy(ps[i].neighbours, pg->adj_list[i], pg->adj_sizes[i] * sizeof(*(ps[i].neighbours)));
     ps[i].hrCells = malloc(ps[i].nneighbours * sizeof(*ps[i].hrCells));
+    ps[i].hrNodes = malloc(ps[i].nneighbours * sizeof(*ps[i].hrCells));
     for (uint32_t j = 0; j < ps[i].nneighbours; ++j) {
       initArr(&ps[i].hrCells[j], 64);
     }
@@ -659,7 +649,11 @@ int main(int argc, char* argv[]) {
     for (uint32_t j = 0; j < ps[i].nneighbours; ++j) {
       hr_cell_sets[j] = setIntersection(halo_cells[i], halo_cells[ps[i].neighbours[j]]);
       ps[i].hrCells[j] = *toArr(hr_cell_sets[j]);
-      destroyHashMap(hr_cell_sets[j]);
+      destroyHashSet(hr_cell_sets[j]);
+
+      hash_set* nodesIntersection = setIntersection(node_maps[i], node_maps[ps[i].neighbours[j]]);
+      ps[i].hrNodes[j] = *toArr(nodesIntersection);
+      destroyHashSet(nodesIntersection);
     }
   }
 
@@ -668,7 +662,7 @@ int main(int argc, char* argv[]) {
   for (uint32_t i = 0; i < num_parts; ++i) {
     uint32_t total = 0;
     for (uint32_t j = 0; j < ps[i].nneighbours; ++j) {
-      printf("Halo region %u-%u has %u cells\n", i, ps[i].neighbours[j], ps[i].hrCells[j].len);
+      printf("Halo region %u-%u has %u cells and %d nodes\n", i, ps[i].neighbours[j], ps[i].hrCells[j].len, ps[i].hrNodes[j].len);
       total += ps[i].hrCells[j].len;
     }
     total_halo_cells += total;
