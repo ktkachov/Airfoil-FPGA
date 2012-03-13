@@ -60,6 +60,12 @@ typedef struct graph_struct {
   uint32_t num_nodes;
 } ugraph;
 
+typedef struct size_vector_struct {
+  uint32_t nodes, cells, edges, halo_cells, halo_nodes;
+  uint32_t iph_cells, iph_nodes;
+  uint32_t nhd1_cells, nhd1_nodes, nhd1_edges;
+  uint32_t nhd2_cells, nhd2_nodes, nhd2_edges;
+} size_vector_t;
 
 typedef struct internal_partition_struct {
   arr_t cells;
@@ -95,6 +101,8 @@ typedef struct partition_struct {
   arr_t* hrCells; /*Halo region cells*/
   arr_t* hrNodes;
 
+  hash_map* nodeAddressMap;
+  hash_map* cellAddressMap;
   arr_t nodesOrdered;
   arr_t haloNodesOrdered;
   arr_t cellsOrdered;
@@ -672,9 +680,12 @@ int main(int argc, char* argv[]) {
     initArr(&ps[i].haloNodesOrdered, NODES_PER_PARTITION / 100);
     initArr(&ps[i].cellsOrdered, CELLS_PER_PARTITION);
     initArr(&ps[i].haloCellsOrdered, CELLS_PER_PARTITION / 100);
+    ps[i].nodeAddressMap = createHashMap(SMALL_PRIME);
+    ps[i].cellAddressMap = createHashMap(SMALL_PRIME);
+    short a[3] = {0, 2, 1};
     for (short p = 0; p < 3; ++p) {
-      for (uint32_t n = 0; n < ps[i].iparts[p].nodes.len; ++n) {
-        uint32_t node = ps[i].nodes.arr[ps[i].iparts[p].nodes.arr[n]];
+      for (uint32_t n = 0; n < ps[i].iparts[a[p]].nodes.len; ++n) {
+        uint32_t node = ps[i].nodes.arr[ps[i].iparts[a[p]].nodes.arr[n]];
         if (!elemArr(&ps[i].haloNodes, node)) {
           addToArr(&ps[i].nodesOrdered, node);
         } else {
@@ -682,8 +693,8 @@ int main(int argc, char* argv[]) {
         }
       }
 
-      for (uint32_t c = 0; c < ps[i].iparts[p].cells.len; ++c) {
-        uint32_t ctemp = ps[i].cells.arr[ps[i].iparts[p].cells.arr[c]];
+      for (uint32_t c = 0; c < ps[i].iparts[a[p]].cells.len; ++c) {
+        uint32_t ctemp = ps[i].cells.arr[ps[i].iparts[a[p]].cells.arr[c]];
         if (!elemArr(&ps[i].haloCells, ctemp)) {
           addToArr(&ps[i].cellsOrdered, ctemp);
         } else {
@@ -691,6 +702,22 @@ int main(int argc, char* argv[]) {
         }
       }
     }
+    uint32_t node_count = 0;
+    for (uint32_t n = 0; n < ps[i].nodesOrdered.len; ++n) {
+      node_count += addToHashMap(ps[i].nodeAddressMap, ps[i].nodesOrdered.arr[n], node_count);
+    }
+    for (uint32_t n = 0; n < ps[i].haloNodesOrdered.len; ++n) {
+      node_count += addToHashMap(ps[i].nodeAddressMap, ps[i].haloNodesOrdered.arr[n], node_count);
+    }
+    uint32_t cell_count = 0;
+    for (uint32_t n = 0; n < ps[i].cellsOrdered.len; ++n) {
+      cell_count += addToHashMap(ps[i].cellAddressMap, ps[i].cellsOrdered.arr[n], cell_count);
+    }
+    for (uint32_t n = 0; n < ps[i].haloCellsOrdered.len; ++n) {
+      cell_count += addToHashMap(ps[i].cellAddressMap, ps[i].haloCellsOrdered.arr[n], cell_count);
+    }
+
+
     printf("Partition %d has %d ordered nodes and %d ordered halo nodes, total nodes in partition: %d\n", i, ps[i].nodesOrdered.len, ps[i].haloNodesOrdered.len, ps[i].nodes.len);
  }
 
