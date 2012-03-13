@@ -94,6 +94,11 @@ typedef struct partition_struct {
   arr_t nodes;
   arr_t* hrCells; /*Halo region cells*/
   arr_t* hrNodes;
+
+  arr_t nodesOrdered;
+  arr_t haloNodesOrdered;
+  arr_t cellsOrdered;
+  arr_t haloCellsOrdered;
 } partition;
 
 uint32_t elem(uint32_t*, uint32_t, uint32_t);
@@ -103,7 +108,6 @@ uint32_t removeDups(uint32_t*, uint32_t);
 uint32_t min(uint32_t, uint32_t);
 uint32_t max(uint32_t, uint32_t);
 void showGraph(ugraph*);
-
 
 /*
   Takes an array specifying the partition number of each node, a map of elements to nodes, 
@@ -646,6 +650,7 @@ int main(int argc, char* argv[]) {
   /*Determine the cells that are shared between every pair of partitions*/
   for (uint32_t i = 0; i < num_parts; ++i) {
     hash_set* hr_cell_sets[ps[i].nneighbours];
+    hash_set* halo_nodes = createHashSet(101);
     for (uint32_t j = 0; j < ps[i].nneighbours; ++j) {
       hr_cell_sets[j] = setIntersection(halo_cells[i], halo_cells[ps[i].neighbours[j]]);
       ps[i].hrCells[j] = *toArr(hr_cell_sets[j]);
@@ -653,9 +658,41 @@ int main(int argc, char* argv[]) {
 
       hash_set* nodesIntersection = setIntersection(node_maps[i], node_maps[ps[i].neighbours[j]]);
       ps[i].hrNodes[j] = *toArr(nodesIntersection);
+      hash_set* nodes_temp = setUnion(halo_nodes, nodesIntersection);
+      destroyHashSet(halo_nodes);
+      halo_nodes = nodes_temp;
       destroyHashSet(nodesIntersection);
     }
+    ps[i].haloNodes = *toArr(halo_nodes);
+    destroyHashSet(halo_nodes);
   }
+
+  for (uint32_t i = 0; i < num_parts; ++i) {
+    initArr(&ps[i].nodesOrdered, NODES_PER_PARTITION);
+    initArr(&ps[i].haloNodesOrdered, NODES_PER_PARTITION / 100);
+    initArr(&ps[i].cellsOrdered, CELLS_PER_PARTITION);
+    initArr(&ps[i].haloCellsOrdered, CELLS_PER_PARTITION / 100);
+    for (short p = 0; p < 3; ++p) {
+      for (uint32_t n = 0; n < ps[i].iparts[p].nodes.len; ++n) {
+        uint32_t node = ps[i].nodes.arr[ps[i].iparts[p].nodes.arr[n]];
+        if (!elemArr(&ps[i].haloNodes, node)) {
+          addToArr(&ps[i].nodesOrdered, node);
+        } else {
+          addToArr(&ps[i].haloNodesOrdered, node);
+        }
+      }
+
+      for (uint32_t c = 0; c < ps[i].iparts[p].cells.len; ++c) {
+        uint32_t ctemp = ps[i].cells.arr[ps[i].iparts[p].cells.arr[c]];
+        if (!elemArr(&ps[i].haloCells, ctemp)) {
+          addToArr(&ps[i].cellsOrdered, ctemp);
+        } else {
+          addToArr(&ps[i].haloCellsOrdered, ctemp);
+        }
+      }
+    }
+    printf("Partition %d has %d ordered nodes and %d ordered halo nodes, total nodes in partition: %d\n", i, ps[i].nodesOrdered.len, ps[i].haloNodesOrdered.len, ps[i].nodes.len);
+ }
 
   /*Diagnostic messages, etc...*/
   uint32_t total_halo_cells = 0;
@@ -666,7 +703,7 @@ int main(int argc, char* argv[]) {
       total += ps[i].hrCells[j].len;
     }
     total_halo_cells += total;
-    printf("Total: %u halo cells\n", total);
+    printf("Total: %u halo cells and %d halo nodes\n", total, ps[i].haloNodes.len);
     printf("----------------------------------\n");
   }
 
