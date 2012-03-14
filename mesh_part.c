@@ -30,7 +30,7 @@
 #define NODES_PER_PARTITION (CELLS_PER_PARTITION)
 
 /*This depends on the arithmetic pipeline depth on the FPGA*/
-#define BOTTOM_LEVEL_PARTITIONS 17
+#define BOTTOM_LEVEL_PARTITIONS 800
 
 #define PRIME 60013
 #define SMALL_PRIME 10007
@@ -58,6 +58,7 @@ typedef struct graph_struct {
   uint32_t* adj_sizes;
   uint32_t* colours;
   uint32_t num_nodes;
+  uint32_t num_colours;
 } ugraph;
 
 typedef struct size_vector_struct {
@@ -72,6 +73,8 @@ typedef struct internal_partition_struct {
   arr_t edges;
   arr_t nodes;
   ugraph* cg; /*Connectivity graph for internal partitions*/
+  uint32_t* partitionsOrdered;
+  uint32_t* edgesOrdered;
   uint32_t* c2n; /* cells to nodes local map*/
   hash_map* g2l_nodes; /*global to local node numbers*/
   hash_map* g2l_cells; /*global to local cell numbers*/
@@ -141,10 +144,12 @@ ugraph* generateGraph(uint32_t* npart, uint32_t* map, uint32_t dim, uint32_t len
       }
     }
   }
-  ugraph* res = (ugraph*)malloc(sizeof(ugraph));
+  ugraph* res = malloc(sizeof(*res));
   res->adj_list = adj_list;
   res->adj_sizes = adj_sizes;
   res->num_nodes = num_parts;
+  res->num_colours = 0;
+  res->colours = NULL;
   return res;
 }
 
@@ -179,6 +184,7 @@ void colourGraph(ugraph* graph) {
     }
   }
   graph->colours = colours;
+  graph->num_colours = ncolours-1;
 }
 
 inline void printarray(double* data, uint32_t len, const char* file_name) {
@@ -288,6 +294,9 @@ void showGraph(ugraph* g) {
       printf("%u, ", g->adj_list[i][j]);
     }
     printf("\n");
+  }
+  if (g->colours != NULL) {
+    printf("number of colours: %d\n", g->num_colours);
   }
 }
 
@@ -596,8 +605,8 @@ int main(int argc, char* argv[]) {
         printf("bottom level partition %d of partition %d of partition %d has %d edges\n", k, j, i, ip->parts_edges[k].len);
       }
       p_edges += se;
-     // printf("internal graph for partition %d of partition %d is:\n", j, i);
-     // showGraph(ip->cg);
+      printf("internal graph for partition %d of partition %d is:\n", j, i);
+      showGraph(ip->cg);
     }
  
     for (short k = 0; k < 2; ++k) {
@@ -647,7 +656,7 @@ int main(int argc, char* argv[]) {
     ps[i].nneighbours = pg->adj_sizes[i];
     memcpy(ps[i].neighbours, pg->adj_list[i], pg->adj_sizes[i] * sizeof(*(ps[i].neighbours)));
     ps[i].hrCells = malloc(ps[i].nneighbours * sizeof(*ps[i].hrCells));
-    ps[i].hrNodes = malloc(ps[i].nneighbours * sizeof(*ps[i].hrCells));
+    ps[i].hrNodes = malloc(ps[i].nneighbours * sizeof(*ps[i].hrNodes));
     for (uint32_t j = 0; j < ps[i].nneighbours; ++j) {
       initArr(&ps[i].hrCells[j], 64);
     }
@@ -716,9 +725,23 @@ int main(int argc, char* argv[]) {
     for (uint32_t n = 0; n < ps[i].haloCellsOrdered.len; ++n) {
       cell_count += addToHashMap(ps[i].cellAddressMap, ps[i].haloCellsOrdered.arr[n], cell_count);
     }
-
-
     printf("Partition %d has %d ordered nodes and %d ordered halo nodes, total nodes in partition: %d\n", i, ps[i].nodesOrdered.len, ps[i].haloNodesOrdered.len, ps[i].nodes.len);
+
+    for (short p = 0; p < 2; ++p) { 
+      ps[i].iparts[p].partitionsOrdered = malloc(ps[i].iparts[p].cg->num_nodes * sizeof(*ps[i].iparts[p].partitionsOrdered));
+      uint32_t pnum = 0;
+      for (uint32_t col = 0; col < ps[i].iparts[p].cg->num_colours; ++col) {
+        for (uint32_t n = 0; n < ps[i].iparts[p].cg->num_nodes; ++n) {
+          if (ps[i].iparts[p].cg->colours[n] == col) {
+            ps[i].iparts[p].partitionsOrdered[pnum++] = n;
+          }
+        }
+      }
+      ps[i].iparts[p].edgesOrdered = malloc(ps[i].iparts[p].edges.len * sizeof(*ps[i].iparts[p].edgesOrdered));
+ 
+
+    }
+
  }
 
   /*Diagnostic messages, etc...*/
