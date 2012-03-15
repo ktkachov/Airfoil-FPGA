@@ -8,8 +8,8 @@
   so that the arithmetic pipeline can compute the contribution of that cell to the overall value.
   The top-level chunks/partitions share halo data between them that will be reduced (with addition)
   on the host. The code has to determine the halos between every pair of partitions and schedule them
-  for streaming to the chip. It also needs to compute an iteration order for the partition data. The
-  FPGA itself will not be accessing the DRAM in a random way.
+  for streaming to the chip. It also needs to compute an iteration order for the partition data. 
+  The FPGA itself will not be accessing the DRAM in a random way.
 
   @author: Kyrylo Tkachov (kt208@imperial.ac.uk)
 */
@@ -312,7 +312,7 @@ void generateDotGraph(ugraph* g, const char* fileName, partition* ps) {
 
 void showColourListSizes(colour_list* cl) {
   for (uint32_t c = 0; c < cl->num_colours; ++c) {
-    printf("colour %d has %d nodes\n", c, cl->sizes[c]);
+    printf("colour %d has %d elements\n", c, cl->sizes[c]);
   }
 }
 
@@ -361,13 +361,6 @@ int main(int argc, char* argv[]) {
   becell = malloc( nbedge*sizeof(*becell));
   bound =  malloc( nbedge*sizeof(*bound));
 
-  /*
-    Cellse is the cells-to-edges map, cellse_helper is used in the building of that map
-    and free'd afterwards. Not currently used, but may come in handy later on.
-  */
-  uint32_t* cellse = malloc(4*ncell*sizeof(*cellse));
-  uint32_t* cellse_helper = calloc(sizeof(*cellse_helper), ncell);
-
   x =  malloc(2*nnode*sizeof(*x));
   q =  malloc(4*ncell*sizeof(*q));
   qold = malloc(4*ncell*sizeof(*qold));
@@ -403,14 +396,6 @@ int main(int argc, char* argv[]) {
 
   fclose(fp);
 
-  /*Populate the cells to edges map*/
-  for (uint32_t i = 0; i < nedge; ++i) {
-    cellse[4*ecell[2*i] + cellse_helper[ecell[2*i]]] = i;
-    cellse_helper[ecell[2*i]]++;
-    cellse[4*ecell[2*i+1] + cellse_helper[ecell[2*i+1]]] = i;
-    cellse_helper[ecell[2*i+1]]++;
-  }
-  
   clock_t start, end;
   start = clock();
  
@@ -550,7 +535,7 @@ int main(int argc, char* argv[]) {
       uint32_t c1 = getValue(ps[i].g2l_cells, ecell[2*ps[i].edges.arr[j]]);
       uint32_t c2 = getValue(ps[i].g2l_cells, ecell[2*ps[i].edges.arr[j] + 1]);
       if (c1 == UINT_MAX || c2 == UINT_MAX) {
-        printf("ERROR! cell hash map does not contain values!\n");
+        printf("ERROR! cell hash map does not contain cell values!\n");
       }
       addToHashSet(cell_sets[n1], c1);
       addToHashSet(cell_sets[n1], c2);
@@ -560,7 +545,7 @@ int main(int argc, char* argv[]) {
         uint32_t node2 = getValue(ps[i].g2l_nodes, cell[4*ps[i].cells.arr[c2] + k]);
 
         if (node1 == UINT_MAX || node2 == UINT_MAX) {
-          printf("ERROR! node hash map does not contain values!\n");
+          printf("ERROR! node hash map does not contain node values!\n");
         }
 
         if (pnpart[node1] != n1) {
@@ -637,7 +622,7 @@ int main(int argc, char* argv[]) {
         ip->parts_edges[k] = *toArr(bottom_edge_sets[k]);
         destroyHashSet(bottom_edge_sets[k]);
         se += ip->parts_edges[k].len;
- //       printf("bottom level partition %d of partition %d of partition %d has %d edges\n", k, j, i, ip->parts_edges[k].len);
+        printf("bottom level partition %d of partition %d of partition %d has %d edges\n", k, j, i, ip->parts_edges[k].len);
       }
       p_edges += se;
  //     printf("internal graph for partition %d of partition %d is:\n", j, i);
@@ -802,6 +787,11 @@ int main(int argc, char* argv[]) {
   colourGraph(pg);
   printf("Top level graph of mesh partitions:\n");
   showGraph(pg);
+
+  printf("Generating partition processing order...\n");
+  colour_list* cl_global = toColourList(pg);
+  printf("Colour list for global partitioning graph:\n");
+  showColourListSizes(cl_global);
   const char* fileName = "meshColoured.dot";
   printf("Writing partition graph to %s ...\n", fileName);
   generateDotGraph(pg, fileName, ps);
