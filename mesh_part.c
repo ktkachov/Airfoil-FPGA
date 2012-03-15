@@ -30,7 +30,8 @@
 #define NODES_PER_PARTITION (CELLS_PER_PARTITION)
 
 /*This depends on the arithmetic pipeline depth on the FPGA*/
-#define BOTTOM_LEVEL_PARTITIONS 800
+#define PIPELINE_LATENCY 17
+#define BOTTOM_LEVEL_PARTITIONS (2*8*PIPELINE_LATENCY)
 
 #define PRIME 60013
 #define SMALL_PRIME 10007
@@ -60,6 +61,12 @@ typedef struct graph_struct {
   uint32_t num_nodes;
   uint32_t num_colours;
 } ugraph;
+
+typedef struct colour_list_struct {
+  uint32_t** nodes;
+  uint32_t num_colours;
+  uint32_t* sizes;
+} colour_list;
 
 typedef struct size_vector_struct {
   uint32_t nodes, cells, edges, halo_cells, halo_nodes;
@@ -187,6 +194,28 @@ void colourGraph(ugraph* graph) {
   graph->num_colours = ncolours-1;
 }
 
+colour_list* toColourList(ugraph* g) {
+  uint32_t** nodes = malloc(g->num_colours * sizeof(*nodes));
+  uint32_t* sizes = calloc(g->num_colours, sizeof(*sizes));
+  for (uint32_t n = 0; n < g->num_nodes; ++n) {
+    ++sizes[g->colours[n]];
+  }
+  for (uint32_t c = 0; c < g->num_colours; ++c) {
+    nodes[c] = malloc(sizes[c] * sizeof(nodes[c]));
+  }
+  uint32_t* counts = calloc(g->num_colours, sizeof(*counts));
+
+  for (uint32_t n = 0; n < g->num_nodes; ++n) {
+    nodes[g->colours[n]][counts[g->colours[n]]++] = n;
+  }
+  colour_list* res = malloc(sizeof(*res));
+  res->nodes = nodes;
+  res->sizes = sizes;
+  res->num_colours = g->num_colours;
+  free(counts);
+  return res;
+}
+
 inline void printarray(double* data, uint32_t len, const char* file_name) {
   FILE* flog;
   flog = fopen(file_name, "w");
@@ -279,6 +308,12 @@ void generateDotGraph(ugraph* g, const char* fileName, partition* ps) {
   }
   fprintf(fp, "}");
   fclose(fp);
+}
+
+void showColourListSizes(colour_list* cl) {
+  for (uint32_t c = 0; c < cl->num_colours; ++c) {
+    printf("colour %d has %d nodes\n", c, cl->sizes[c]);
+  }
 }
 
 
@@ -553,7 +588,7 @@ int main(int argc, char* argv[]) {
       ip->g2l_cells = createHashMap(SMALL_PRIME);
       ip->c2n = malloc(ip->cells.len * 4 * sizeof(*ip->c2n));
 
-      printf("Subpartition %d of partition %d has %d nodes, %d edges, %d cells\n", j, i, ip->nodes.len, ip->edges.len, ip->cells.len);
+      //printf("Subpartition %d of partition %d has %d nodes, %d edges, %d cells\n", j, i, ip->nodes.len, ip->edges.len, ip->cells.len);
 
       for (uint32_t k = 0; k < ip->nodes.len; ++k) {
         addToHashMap(ip->g2l_nodes, ip->nodes.arr[k], k);
@@ -587,26 +622,26 @@ int main(int argc, char* argv[]) {
       ip->parts_nodes = malloc(nparts * sizeof(*ip->parts_nodes));
       ip->parts_cells = malloc(nparts * sizeof(*ip->parts_cells));
       ip->parts_edges = malloc(nparts * sizeof(*ip->parts_edges));
-      hash_set* bedge_sets[nparts];
+      hash_set* bottom_edge_sets[nparts];
       for (uint32_t k = 0; k < nparts; ++k) {
-        bedge_sets[k] = createHashSet(SMALL_PRIME);
+        bottom_edge_sets[k] = createHashSet(SMALL_PRIME);
       }
       for (uint32_t k = 0; k < ip->edges.len; ++k) {
         uint32_t n[2];
         n[0] = getValue(ip->g2l_nodes, getValue(ps[i].g2l_nodes, edge[2*ip->edges.arr[k]]));
         n[1] = getValue(ip->g2l_nodes, getValue(ps[i].g2l_nodes, edge[2*ip->edges.arr[k] + 1]));
-        addToHashSet(bedge_sets[intnpart[n[0]]], ip->edges.arr[k]);
+        addToHashSet(bottom_edge_sets[intnpart[n[0]]], ip->edges.arr[k]);
       }
       uint32_t se = 0;
       for (uint32_t k = 0; k < nparts; ++k) {
-        ip->parts_edges[k] = *toArr(bedge_sets[k]);
-        destroyHashSet(bedge_sets[k]);
+        ip->parts_edges[k] = *toArr(bottom_edge_sets[k]);
+        destroyHashSet(bottom_edge_sets[k]);
         se += ip->parts_edges[k].len;
-        printf("bottom level partition %d of partition %d of partition %d has %d edges\n", k, j, i, ip->parts_edges[k].len);
+ //       printf("bottom level partition %d of partition %d of partition %d has %d edges\n", k, j, i, ip->parts_edges[k].len);
       }
       p_edges += se;
-      printf("internal graph for partition %d of partition %d is:\n", j, i);
-      showGraph(ip->cg);
+ //     printf("internal graph for partition %d of partition %d is:\n", j, i);
+ //     showGraph(ip->cg);
     }
  
     for (short k = 0; k < 2; ++k) {
@@ -620,6 +655,7 @@ int main(int argc, char* argv[]) {
       ps[i].iparts[k].nodes = *toArr(newNodes);
       destroyHashSet(newNodes);
     }
+/*
     for (short k = 0; k < 3; ++k) {
       printf("sub-partition %d of partition %d after common elements removal has %d cells, %d nodes, %d edges\n", 
               k,
@@ -629,6 +665,7 @@ int main(int argc, char* argv[]) {
               ps[i].iparts[k].edges.len
             );
     }
+*/
 
   }
 
@@ -738,8 +775,11 @@ int main(int argc, char* argv[]) {
         }
       }
       ps[i].iparts[p].edgesOrdered = malloc(ps[i].iparts[p].edges.len * sizeof(*ps[i].iparts[p].edgesOrdered));
- 
-
+      ugraph* g = ps[i].iparts[p].cg;
+      colour_list* cl = toColourList(g);
+      printf("colour list for subpartition %d of partition %d\n", p, i);
+      showColourListSizes(cl);
+      free(cl);
     }
 
  }
