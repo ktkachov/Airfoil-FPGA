@@ -5,7 +5,7 @@ MaxCompilerDesign/ contains the Eclipse (MaxIDE) project for the FPGA design. Th
 are ResCalcKernel.java which specifies the kernel and ResControlSM.maxj which specifies the state machine
 that controls the I/O to and from the chip.
 
-A Makefile is provided for the host side. The code required the METIS API, so you'll have to change
+A Makefile is provided for the host side. The code requires the METIS API, so you'll have to change
 the METIS paths in the Makefile to point to your installation of METIS.
 
 mesh_part.c also generates a top-level coloured graph with the halo region sizes between each pair of partitions
