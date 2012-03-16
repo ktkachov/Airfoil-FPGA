@@ -10,8 +10,13 @@ mesh: mesh_part.c airfoil_utils.h
 airfoil: airfoil.cpp
 	g++ -o $@ -O3 -lm $<
 
-svg:
-	./dot2svg *.dot
+%.svg: %.dot
+	./dot2svg $^
+
+%.dot: mesh
+	./$^
+
+graphs: meshColoured.svg
 
 clean:
 	rm -f mesh
