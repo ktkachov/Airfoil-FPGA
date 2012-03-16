@@ -11,14 +11,17 @@ airfoil: airfoil.cpp
 	g++ -o $@ -O3 -lm $<
 
 %.svg: %.dot
-	./dot2svg $^
+	./dot2svg $<
+	cp $@ graphs/
 
 %.dot: mesh
-	./$^
+	./$<
+	cp $@ graphs/
 
-graphs: meshColoured.svg
+graph: meshColoured.svg
 
 clean:
 	rm -f mesh
 	rm -f airfoil
 	rm -f *.svg
+	rm -f *.dot
