@@ -534,7 +534,7 @@ int main(int argc, char* argv[]) {
 
       uint32_t c1 = getValue(ps[i].g2l_cells, ecell[2*ps[i].edges.arr[j]]);
       uint32_t c2 = getValue(ps[i].g2l_cells, ecell[2*ps[i].edges.arr[j] + 1]);
-      if (c1 == UINT_MAX || c2 == UINT_MAX) {
+      if (c1 == EMPTY_ENTRY || c2 == EMPTY_ENTRY) {
         printf("ERROR! cell hash map does not contain cell values!\n");
       }
       addToHashSet(cell_sets[n1], c1);
@@ -544,7 +544,7 @@ int main(int argc, char* argv[]) {
         uint32_t node1 = getValue(ps[i].g2l_nodes, cell[4*ps[i].cells.arr[c1] + k]);
         uint32_t node2 = getValue(ps[i].g2l_nodes, cell[4*ps[i].cells.arr[c2] + k]);
 
-        if (node1 == UINT_MAX || node2 == UINT_MAX) {
+        if (node1 == EMPTY_ENTRY || node2 == EMPTY_ENTRY) {
           printf("ERROR! node hash map does not contain node values!\n");
         }
 
@@ -622,7 +622,7 @@ int main(int argc, char* argv[]) {
         ip->parts_edges[k] = *toArr(bottom_edge_sets[k]);
         destroyHashSet(bottom_edge_sets[k]);
         se += ip->parts_edges[k].len;
-        printf("bottom level partition %d of partition %d of partition %d has %d edges\n", k, j, i, ip->parts_edges[k].len);
+//        printf("bottom level partition %d of partition %d of partition %d has %d edges\n", k, j, i, ip->parts_edges[k].len);
       }
       p_edges += se;
  //     printf("internal graph for partition %d of partition %d is:\n", j, i);
@@ -747,7 +747,7 @@ int main(int argc, char* argv[]) {
     for (uint32_t n = 0; n < ps[i].haloCellsOrdered.len; ++n) {
       cell_count += addToHashMap(ps[i].cellAddressMap, ps[i].haloCellsOrdered.arr[n], cell_count);
     }
-    printf("Partition %d has %d ordered nodes and %d ordered halo nodes, total nodes in partition: %d\n", i, ps[i].nodesOrdered.len, ps[i].haloNodesOrdered.len, ps[i].nodes.len);
+    //printf("Partition %d has %d ordered nodes and %d ordered halo nodes, total nodes in partition: %d\n", i, ps[i].nodesOrdered.len, ps[i].haloNodesOrdered.len, ps[i].nodes.len);
 
     for (short p = 0; p < 2; ++p) { 
       ps[i].iparts[p].partitionsOrdered = malloc(ps[i].iparts[p].cg->num_nodes * sizeof(*ps[i].iparts[p].partitionsOrdered));
@@ -762,8 +762,8 @@ int main(int argc, char* argv[]) {
       ps[i].iparts[p].edgesOrdered = malloc(ps[i].iparts[p].edges.len * sizeof(*ps[i].iparts[p].edgesOrdered));
       ugraph* g = ps[i].iparts[p].cg;
       colour_list* cl = toColourList(g);
-      printf("colour list for subpartition %d of partition %d\n", p, i);
-      showColourListSizes(cl);
+      //printf("colour list for subpartition %d of partition %d\n", p, i);
+      //showColourListSizes(cl);
       free(cl);
     }
 
