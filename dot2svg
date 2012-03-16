@@ -1,2 +1,2 @@
-#!/usr/bin/bash
+#!/usr/bin/env sh
 dot -Tsvg -o "$(basename $1 .dot).svg" $1 

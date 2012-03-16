@@ -11,7 +11,7 @@ airfoil: airfoil.cpp
 	g++ -o $@ -O3 -lm $<
 
 svg:
-	bash ./dot2svg *.dot
+	./dot2svg *.dot
 
 clean:
 	rm -f mesh

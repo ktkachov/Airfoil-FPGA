@@ -43,6 +43,7 @@ struct entry {
 
 typedef struct hash_map_struct {
   uint32_t size;
+  uint32_t num_elements;
   struct entry* arr;
 } hash_map;
 
@@ -51,6 +52,7 @@ uint32_t hash(uint32_t);
 hash_map* createHashMap(uint32_t size) {
   hash_map* res = malloc(sizeof(*res));
   res->size = size;
+  res->num_elements = 0;
   res->arr = malloc(size * sizeof(*res->arr));
   for (uint32_t i = 0; i < size; ++i) {
     res->arr[i].k = EMPTY_ENTRY;
@@ -75,6 +77,7 @@ int addToHashMap(hash_map* m, uint32_t k, uint32_t v) {
   if (m->arr[hk].k == EMPTY_ENTRY) {
     m->arr[hk].k = k;
     m->arr[hk].v = v;
+    ++m->num_elements;
     return 1;
   }
   struct entry* e = &(m->arr[hk]);
@@ -92,6 +95,7 @@ int addToHashMap(hash_map* m, uint32_t k, uint32_t v) {
   ne->v = v;
   ne->next = NULL;
   e->next = ne;
+  ++m->num_elements;
   return 1;
 } 
 
