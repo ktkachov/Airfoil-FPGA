@@ -31,7 +31,7 @@
 
 /*This depends on the arithmetic pipeline depth on the FPGA*/
 #define PIPELINE_LATENCY 17
-#define BOTTOM_LEVEL_PARTITIONS (2*8*PIPELINE_LATENCY)
+#define BOTTOM_LEVEL_PARTITIONS (64*PIPELINE_LATENCY)
 
 #define PRIME 60013
 #define SMALL_PRIME 10007
@@ -194,6 +194,75 @@ void colourGraph(ugraph* graph) {
   graph->num_colours = ncolours-1;
 }
 
+int validPos(uint32_t* arr, uint32_t node, uint32_t nnodes, uint32_t count, uint32_t** al, uint32_t* as) {
+  if (count <= PIPELINE_LATENCY) {
+    for (uint32_t i = 0; i < count; ++i) {
+      if (elem(al[arr[i]], as[arr[i]], node)) {
+        return 0;
+      }
+    }
+    return 1;
+  }
+
+  if ((nnodes - count) <= PIPELINE_LATENCY) {
+    for (uint32_t i = count - PIPELINE_LATENCY; i < count; ++i) {
+      if (elem(al[arr[i]], as[arr[i]], node)) {
+        return 0;
+      }
+    }
+    for (uint32_t i = 0; i < PIPELINE_LATENCY - (nnodes - count); ++i) {
+      if (elem(al[arr[i]], as[arr[i]], node)) {
+        return 0;
+      }
+    }
+    return 1;
+  }
+
+  for (uint32_t i = count - PIPELINE_LATENCY; i < count; ++i) {
+    if (elem(al[arr[i]], as[arr[i]], node)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+uint32_t* scheduleGraph(ugraph* g) {
+  uint32_t* res = malloc(g->num_nodes * sizeof(*res));
+  uint32_t** al = g->adj_list;
+  uint32_t* as  = g->adj_sizes;
+  short* elems = calloc(g->num_nodes, sizeof(*elems));
+  uint32_t count = 0;
+  stack* st = createStack();
+  for (uint32_t i = 0; i < g->num_nodes; ++i) {
+    stack_push(st, g->num_nodes - 1 - i);
+  }
+  while (!stack_isEmpty(st)) {
+    uint32_t n = stack_pop(st);
+    res[count++] = n;
+    elems[n] = 1;
+    if (count == g->num_nodes) {
+      destroyStack(st);
+      return res;
+    }
+    short hasValidChildren = 0;
+    for (uint32_t i = 0; i < g->num_nodes; ++i) {
+//      printf("testing n=%d, i=%d, count=%d\n", n, i, count);
+      if (!elem(al[n], as[n], i) && (elems[i] == 0) && validPos(res, i, g->num_nodes, count, al, as)) {
+        stack_push(st, i);
+        hasValidChildren = 1;
+      }
+    }
+    if (!hasValidChildren) {
+      --count;
+      elems[n] = 0;
+    }
+  }
+  printf("ERROR! Could not schedule graph!\n");
+  free(elems);
+  destroyStack(st);
+  return NULL;
+}
+
 colour_list* toColourList(ugraph* g) {
   uint32_t** nodes = malloc(g->num_colours * sizeof(*nodes));
   uint32_t* sizes = calloc(g->num_colours, sizeof(*sizes));
@@ -341,6 +410,7 @@ int main(int argc, char* argv[]) {
   double *x, *q, *qold, *adt, *res;
 
   uint32_t nnode,ncell,nedge,nbedge;
+
  
   /* read in grid */
 
@@ -622,7 +692,7 @@ int main(int argc, char* argv[]) {
         ip->parts_edges[k] = *toArr(bottom_edge_sets[k]);
         destroyHashSet(bottom_edge_sets[k]);
         se += ip->parts_edges[k].len;
-//        printf("bottom level partition %d of partition %d of partition %d has %d edges\n", k, j, i, ip->parts_edges[k].len);
+        printf("bottom level partition %d of partition %d of partition %d has %d edges\n", k, j, i, ip->parts_edges[k].len);
       }
       p_edges += se;
  //     printf("internal graph for partition %d of partition %d is:\n", j, i);
@@ -761,10 +831,17 @@ int main(int argc, char* argv[]) {
       }
       ps[i].iparts[p].edgesOrdered = malloc(ps[i].iparts[p].edges.len * sizeof(*ps[i].iparts[p].edgesOrdered));
       ugraph* g = ps[i].iparts[p].cg;
-      colour_list* cl = toColourList(g);
+    //  colour_list* cl = toColourList(g);
+      uint32_t* partsScheduled = scheduleGraph(g);
+      printf("Scheduled partition graph for partition %d of %d is: \n", p, i);
+      for (uint32_t i = 0; i < g->num_nodes; ++i) {
+        printf("%d, ", partsScheduled[i]);
+      }
+      printf("----------------\n");
+      free(partsScheduled);
       //printf("colour list for subpartition %d of partition %d\n", p, i);
       //showColourListSizes(cl);
-      free(cl);
+      //free(cl);
     }
 
  }
