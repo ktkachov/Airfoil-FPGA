@@ -35,7 +35,6 @@ void destroyArr(arr_t* a) {
   free(a);
 }
 
-/*Hash map*/
 struct entry {
   uint32_t k, v;
   struct entry* next;
@@ -173,6 +172,10 @@ int addToHashSet(hash_set* m, uint32_t k) {
   return addToHashMap(m, k, 0);
 } 
 
+int hashSetContains(hash_set* s, uint32_t k) {
+  return getValue(s, k) != EMPTY_ENTRY;
+}
+
 hash_set* setDiff(hash_set* s1, hash_set* s2) {
   hash_set* res = createHashSet(s1->size);
   for (uint32_t i = 0; i < s1->size; ++i) {
@@ -240,5 +243,54 @@ void destroyHashSet(hash_set* s) {
   destroyHashMap(s);
 }
 
+
+
+/*Stack definition*/
+struct stack_elem {
+  uint32_t val;
+  struct stack_elem* next;
+};
+
+typedef struct stack_t {
+  struct stack_elem* top;
+} stack;
+
+stack* createStack() {
+  stack* res = malloc(sizeof(*res));
+  res->top = NULL;
+  return res;
+}
+
+void stack_push(stack* s, uint32_t v) {
+  struct stack_elem* e = malloc(sizeof(*e));
+  e->val = v;
+  e->next = s->top;
+  s->top = e;
+}
+
+uint32_t stack_pop(stack* s) {
+  struct stack_elem* e = s->top;
+  s->top = e->next;
+  uint32_t res = e->val;
+  free(e);
+  return res;
+}
+
+uint32_t stack_peek(stack* s) {
+  return s->top->val;
+}
+
+int stack_isEmpty(stack* s) {
+  return s->top == NULL;
+}
+
+void destroyStack(stack* s) {
+  while (s->top != NULL) {
+    struct stack_elem* e = s->top;
+    s->top = s->top->next;
+    free(e);
+  }
+  free(s);
+}
 
 #endif

@@ -30,8 +30,8 @@
 #define NODES_PER_PARTITION (CELLS_PER_PARTITION)
 
 /*This depends on the arithmetic pipeline depth on the FPGA*/
-#define PIPELINE_LATENCY 17
-#define BOTTOM_LEVEL_PARTITIONS (64*PIPELINE_LATENCY)
+#define PIPELINE_LATENCY 5
+#define BOTTOM_LEVEL_PARTITIONS (5 * PIPELINE_LATENCY)
 
 #define PRIME 60013
 #define SMALL_PRIME 10007
@@ -126,7 +126,6 @@ uint32_t removeDups(uint32_t*, uint32_t);
 uint32_t min(uint32_t, uint32_t);
 uint32_t max(uint32_t, uint32_t);
 void showGraph(ugraph*);
-
 /*
   Takes an array specifying the partition number of each node, a map of elements to nodes, 
   the dimension of the map (4 for cells, 2 for edges),
@@ -194,7 +193,22 @@ void colourGraph(ugraph* graph) {
   graph->num_colours = ncolours-1;
 }
 
+int validSchedule(ugraph* g, uint32_t* sch) {
+  for (uint32_t i = 0; i < g->num_nodes-1; ++i) {
+    for (uint32_t j = i+1; j < (i+1+PIPELINE_LATENCY) % g->num_nodes; ++j) {
+      if (elem(g->adj_list[sch[i]], g->adj_sizes[sch[i]], sch[j])) {
+        printf("ERROR! %d is within reach of %d\n", sch[i], sch[j]);
+        return 0;
+      }
+    }
+  }
+  return 1;
+}
+
 int validPos(uint32_t* arr, uint32_t node, uint32_t nnodes, uint32_t count, uint32_t** al, uint32_t* as) {
+//  if (elem(arr, count, node)) {
+//    return 0;
+//  }
   if (count <= PIPELINE_LATENCY) {
     for (uint32_t i = 0; i < count; ++i) {
       if (elem(al[arr[i]], as[arr[i]], node)) {
@@ -203,22 +217,14 @@ int validPos(uint32_t* arr, uint32_t node, uint32_t nnodes, uint32_t count, uint
     }
     return 1;
   }
-
-  if ((nnodes - count) <= PIPELINE_LATENCY) {
-    for (uint32_t i = count - PIPELINE_LATENCY; i < count; ++i) {
-      if (elem(al[arr[i]], as[arr[i]], node)) {
-        return 0;
-      }
-    }
+  if (count > nnodes - PIPELINE_LATENCY) {
     for (uint32_t i = 0; i < PIPELINE_LATENCY - (nnodes - count); ++i) {
       if (elem(al[arr[i]], as[arr[i]], node)) {
         return 0;
       }
     }
-    return 1;
   }
-
-  for (uint32_t i = count - PIPELINE_LATENCY; i < count; ++i) {
+  for (uint32_t i = count - PIPELINE_LATENCY - 1; i < count; ++i) {
     if (elem(al[arr[i]], as[arr[i]], node)) {
       return 0;
     }
@@ -226,11 +232,47 @@ int validPos(uint32_t* arr, uint32_t node, uint32_t nnodes, uint32_t count, uint
   return 1;
 }
 
+int sched(uint32_t n, uint32_t* res, uint32_t* count, short* elems, uint32_t** al, uint32_t* as, uint32_t nnodes) {
+  res[(*count)++] = n;
+  if ((*count) == nnodes) {
+    return 1;
+  }
+  elems[n] = 1;
+  for (uint32_t i = 0; i < nnodes; ++i) {
+    if ((elems[i] == 0) && !elem(al[n], as[n], i) && validPos(res, i, nnodes, *count, al, as)) {
+      if (sched(i, res, count, elems, al, as, nnodes)) {
+        return 1;
+      }
+    }
+  }
+ // printf("returning 0 with n = %d, count=%d\n", n, *count);
+  --(*count);
+  elems[n] = 0;
+  return 0;
+}
+
+uint32_t* scheduleGraph2(ugraph* g) {
+  uint32_t* res = malloc(g->num_nodes * sizeof(*res));
+  uint32_t count = 0;
+  short* elems = calloc(g->num_nodes, sizeof(*elems));
+  uint32_t** al = g->adj_list;
+  uint32_t* as = g->adj_sizes;
+  for (uint32_t i = 0; i < g->num_nodes; ++i) {
+    if (sched(i, res, &count, elems, al, as, g->num_nodes)) {
+      free(elems);
+      return res;
+    }
+  }
+  printf("ERROR! could not schedule graph!\n");
+  return NULL;
+}
+
 uint32_t* scheduleGraph(ugraph* g) {
   uint32_t* res = malloc(g->num_nodes * sizeof(*res));
   uint32_t** al = g->adj_list;
   uint32_t* as  = g->adj_sizes;
   short* elems = calloc(g->num_nodes, sizeof(*elems));
+  stack* counts = createStack();
   uint32_t count = 0;
   stack* st = createStack();
   for (uint32_t i = 0; i < g->num_nodes; ++i) {
@@ -242,19 +284,28 @@ uint32_t* scheduleGraph(ugraph* g) {
     elems[n] = 1;
     if (count == g->num_nodes) {
       destroyStack(st);
+      destroyStack(counts);
+      free(elems);
       return res;
     }
-    short hasValidChildren = 0;
+    uint32_t children = 0;
     for (uint32_t i = 0; i < g->num_nodes; ++i) {
-//      printf("testing n=%d, i=%d, count=%d\n", n, i, count);
-      if (!elem(al[n], as[n], i) && (elems[i] == 0) && validPos(res, i, g->num_nodes, count, al, as)) {
+      if (n != i && !elem(al[n], as[n], i) && (elems[i] == 0) && validPos(res, i, g->num_nodes, count, al, as)) {
         stack_push(st, i);
-        hasValidChildren = 1;
+        ++children;
       }
     }
-    if (!hasValidChildren) {
-      --count;
+    if (children != 0) {
+      stack_push(counts, children);
+    } else {
+      if (stack_peek(counts) <= 1) {
+        stack_pop(counts);
+        elems[res[--count]] = 0;
+      } else {
+        counts->top->val--; /*FIXME: Major breakage of encapsulation!!!!!*/
+      }
       elems[n] = 0;
+      --count;
     }
   }
   printf("ERROR! Could not schedule graph!\n");
@@ -832,12 +883,15 @@ int main(int argc, char* argv[]) {
       ps[i].iparts[p].edgesOrdered = malloc(ps[i].iparts[p].edges.len * sizeof(*ps[i].iparts[p].edgesOrdered));
       ugraph* g = ps[i].iparts[p].cg;
     //  colour_list* cl = toColourList(g);
-      uint32_t* partsScheduled = scheduleGraph(g);
+      uint32_t* partsScheduled = scheduleGraph2(g);
       printf("Scheduled partition graph for partition %d of %d is: \n", p, i);
+      printf("is schedule valid? %d\n", validSchedule(g, partsScheduled));
       for (uint32_t i = 0; i < g->num_nodes; ++i) {
         printf("%d, ", partsScheduled[i]);
       }
-      printf("----------------\n");
+      printf("\n");
+    //  showGraph(g);
+      printf("-----------------\n");
       free(partsScheduled);
       //printf("colour list for subpartition %d of partition %d\n", p, i);
       //showColourListSizes(cl);
