@@ -224,9 +224,9 @@ void destroyMatrix(uint32_t** mat, uint32_t s) {
   free(mat);
 }
 
-int validSchedule(ugraph* g, uint32_t* sch) {
+int validSchedule(ugraph* g, uint32_t* sch, uint32_t interval) {
   for (uint32_t i = 0; i < g->num_nodes-1; ++i) {
-    for (uint32_t j = i+1; j < (i+1+PIPELINE_LATENCY) % g->num_nodes; ++j) {
+    for (uint32_t j = i+1; j < (i+1+interval) % g->num_nodes; ++j) {
       if (elem(g->adj_list[sch[i]], g->adj_sizes[sch[i]], sch[j])) {
         printf("ERROR! %d is within reach of %d\n", sch[i], sch[j]);
         return 0;
@@ -236,11 +236,11 @@ int validSchedule(ugraph* g, uint32_t* sch) {
   return 1;
 }
 
-int validPos(uint32_t* arr, uint32_t node, uint32_t nnodes, uint32_t count, uint32_t** mat) {
+int validPos(uint32_t* arr, uint32_t node, uint32_t nnodes, uint32_t count, uint32_t** mat, uint32_t interval) {
 //  if (elem(arr, count, node)) {
 //    return 0;
 //  }
-  if (count <= PIPELINE_LATENCY) {
+  if (count <= interval) {
     for (uint32_t i = 0; i < count; ++i) {
       if (mat[arr[i]][node]) {
         return 0;
@@ -248,14 +248,14 @@ int validPos(uint32_t* arr, uint32_t node, uint32_t nnodes, uint32_t count, uint
     }
     return 1;
   }
-  if (count > nnodes - PIPELINE_LATENCY) {
-    for (uint32_t i = 0; i < PIPELINE_LATENCY - (nnodes - count); ++i) {
+  if (count > nnodes - interval) {
+    for (uint32_t i = 0; i < interval - (nnodes - count); ++i) {
       if (mat[arr[i]][node]) {
         return 0;
       }
     }
   }
-  for (uint32_t i = count - PIPELINE_LATENCY - 1; i < count; ++i) {
+  for (uint32_t i = count - interval - 1; i < count; ++i) {
     if (mat[arr[i]][node]) {
       return 0;
     }
@@ -263,15 +263,15 @@ int validPos(uint32_t* arr, uint32_t node, uint32_t nnodes, uint32_t count, uint
   return 1;
 }
 
-int sched(uint32_t n, uint32_t* res, uint32_t* count, short* elems, uint32_t** mat,  uint32_t nnodes) {
+int sched(uint32_t n, uint32_t* res, uint32_t* count, short* elems, uint32_t** mat,  uint32_t nnodes, uint32_t interval) {
   res[(*count)++] = n;
   if ((*count) == nnodes) {
     return 1;
   }
   elems[n] = 1;
   for (uint32_t i = 0; i < nnodes; ++i) {
-    if (!elems[i] && !mat[n][i] && validPos(res, i, nnodes, *count, mat)) {
-      if (sched(i, res, count, elems, mat, nnodes)) {
+    if (!elems[i] && !mat[n][i] && validPos(res, i, nnodes, *count, mat, interval)) {
+      if (sched(i, res, count, elems, mat, nnodes, interval)) {
         return 1;
       }
     }
@@ -282,13 +282,13 @@ int sched(uint32_t n, uint32_t* res, uint32_t* count, short* elems, uint32_t** m
   return 0;
 }
 
-uint32_t* scheduleGraph2(ugraph* g) {
+uint32_t* scheduleGraph2(ugraph* g, uint32_t interval) {
   uint32_t* res = malloc(g->num_nodes * sizeof(*res));
   uint32_t count = 0;
   short* elems = calloc(g->num_nodes, sizeof(*elems));
   uint32_t** mat = toAdjacencyMatrix(g);
   for (uint32_t i = 0; i < g->num_nodes; ++i) {
-    if (sched(i, res, &count, elems, mat,  g->num_nodes)) {
+    if (sched(i, res, &count, elems, mat,  g->num_nodes, interval)) {
       destroyMatrix(mat, g->num_nodes);
       free(elems);
       return res;
@@ -298,7 +298,7 @@ uint32_t* scheduleGraph2(ugraph* g) {
   return NULL;
 }
 
-uint32_t* scheduleGraph(ugraph* g) {
+uint32_t* scheduleGraph(ugraph* g, uint32_t interval) {
   uint32_t* res = malloc(g->num_nodes * sizeof(*res));
   uint32_t** mat = toAdjacencyMatrix(g);
   short* elems = calloc(g->num_nodes, sizeof(*elems));
@@ -322,7 +322,7 @@ uint32_t* scheduleGraph(ugraph* g) {
     }
     uint32_t children = 0;
     for (uint32_t i = 0; i < g->num_nodes; ++i) {
-      if (n != i && !mat[i][n] && !elems[i] && validPos(res, i, g->num_nodes, count, mat)) {
+      if (n != i && !mat[i][n] && !elems[i] && validPos(res, i, g->num_nodes, count, mat, interval)) {
         stack_push(st, i);
         ++children;
       }
@@ -433,6 +433,13 @@ inline uint32_t min(uint32_t a, uint32_t b) {
 
 inline uint32_t max(uint32_t a, uint32_t b) {
   return a > b ? a : b;
+}
+
+void showSizeVector(size_vector_t* sv) {
+  printf("{nodes:%d , cells:%d, edges:%d, haloNodes:%d, haloCells:%d, nhd1Nodes:%d, nhd1Cells:%d, ", 
+        sv->nodes, sv->cells, sv->edges, sv->halo_nodes, sv->halo_cells, sv->nhd1_nodes, sv->nhd1_cells);
+  printf("nhd1Edges:%d, iphNodes:%d, iphCells:%d, nhd2Nodes:%d, nhd2Cells:%d, nhd2Edges:%d}\n",
+        sv->nhd1_edges, sv->iph_nodes, sv->iph_cells, sv->nhd2_nodes, sv->nhd2_cells, sv->nhd2_edges);
 }
 
 /*
@@ -778,7 +785,7 @@ int main(int argc, char* argv[]) {
         ip->parts_edges[k] = *toArr(bottom_edge_sets[k]);
         destroyHashSet(bottom_edge_sets[k]);
         se += ip->parts_edges[k].len;
-        printf("bottom level partition %d of partition %d of partition %d has %d edges\n", k, j, i, ip->parts_edges[k].len);
+        //printf("bottom level partition %d of partition %d of partition %d has %d edges\n", k, j, i, ip->parts_edges[k].len);
       }
       p_edges += se;
  //     printf("internal graph for partition %d of partition %d is:\n", j, i);
@@ -909,9 +916,9 @@ int main(int argc, char* argv[]) {
       initArr(&ps[i].iparts[p].edgesOrdered, EDGES_PER_PARTITION / 2);
       ugraph* g = ps[i].iparts[p].cg;
     //  colour_list* cl = toColourList(g);
-      ps[i].iparts[p].partitionsOrdered = scheduleGraph(g);
+      ps[i].iparts[p].partitionsOrdered = scheduleGraph(g, PIPELINE_LATENCY);
       printf("Scheduled partition graph for partition %d of %d is: \n", p, i);
-      printf("is schedule valid? %d\n", validSchedule(g, ps[i].iparts[p].partitionsOrdered ));
+      printf("is schedule valid? %d\n", validSchedule(g, ps[i].iparts[p].partitionsOrdered , PIPELINE_LATENCY));
       for (uint32_t j = 0; j < g->num_nodes; ++j) {
         printf("%d, ", ps[i].iparts[p].partitionsOrdered [j]);
       }
@@ -959,16 +966,70 @@ int main(int argc, char* argv[]) {
             ps[i].iparts[p].edgeStructsOrdered[e].cell[ii] = getValue(ps[i].cellAddressMap, cell_g[ii]);
           }
         }
+        /*
+        edge_struct* estr = &ps[i].iparts[p].edgeStructsOrdered[e];
+        printf("Edge %d is: {%d, %d, %d, %d}\n", e, estr->node[0], estr->node[1], estr->cell[0], estr->cell[1]);
+        */
       }
-
- 
-      //printf("colour list for subpartition %d of partition %d\n", p, i);
-      //showColourListSizes(cl);
-      //free(cl);
     }
 
  }
 
+  uint32_t* glPartsSched = scheduleGraph(pg, 1);
+  arr_t globalNodesScheduled;
+  arr_t globalCellsScheduled;
+  arr_t globalHaloNodesScheduled;
+  arr_t globalHaloCellsScheduled;
+  initArr(&globalNodesScheduled, nnode);
+  initArr(&globalCellsScheduled, ncell);
+  initArr(&globalHaloNodesScheduled, num_parts * NODES_PER_PARTITION / 20);
+  initArr(&globalHaloCellsScheduled, num_parts * CELLS_PER_PARTITION / 20);
+
+  size_vector_t* size_vectors = malloc(num_parts * sizeof(*size_vectors));
+
+  edge_struct* globalEdgeStructsScheduled = malloc(nedge * sizeof(*globalEdgeStructsScheduled));
+  uint32_t* globalEdgesScheduled = malloc(nedge * sizeof(*globalEdgesScheduled));
+  uint32_t schEdges = 0;
+  for (uint32_t i = 0; i < num_parts; ++i) {
+    uint32_t p = glPartsSched[i];
+    size_vectors[p].nodes = ps[p].nodes.len;
+    size_vectors[p].cells = ps[p].cells.len;
+    size_vectors[p].edges = ps[p].iparts[0].edgesOrdered.len + ps[p].iparts[1].edgesOrdered.len;
+    size_vectors[p].halo_nodes = ps[p].haloNodes.len;
+    size_vectors[p].halo_cells = ps[p].haloCells.len;
+    size_vectors[p].iph_cells = ps[p].iparts[2].cells.len;
+    size_vectors[p].iph_nodes = ps[p].iparts[2].nodes.len;
+    size_vectors[p].nhd1_nodes = ps[p].iparts[0].nodes.len;
+    size_vectors[p].nhd1_nodes = ps[p].iparts[0].nodes.len;
+    size_vectors[p].nhd1_cells = ps[p].iparts[0].cells.len;
+    size_vectors[p].nhd1_edges = ps[p].iparts[0].edgesOrdered.len;
+    size_vectors[p].nhd2_nodes = ps[p].iparts[1].nodes.len;
+    size_vectors[p].nhd2_cells = ps[p].iparts[1].cells.len;
+    size_vectors[p].nhd2_edges = ps[p].iparts[1].edgesOrdered.len;
+    /*showSizeVector(&size_vectors[p]);*/
+    for (uint32_t n = 0; n < ps[p].nodesOrdered.len; ++n) {
+      addToArr(&globalNodesScheduled, ps[p].nodesOrdered.arr[n]);
+    }
+    for (uint32_t c = 0; c < ps[p].cellsOrdered.len; ++c) {
+      addToArr(&globalCellsScheduled, ps[p].cellsOrdered.arr[c]);
+    }
+    for (short ip = 0; ip < 2; ++ip) {
+      for (uint32_t e = 0; e < ps[p].iparts[ip].edgesOrdered.len; ++e) {
+        globalEdgeStructsScheduled[schEdges] = ps[p].iparts[ip].edgeStructsOrdered[e];
+        globalEdgesScheduled[schEdges] = ps[p].iparts[ip].edgesOrdered.arr[e];
+        ++schEdges;
+      }
+    }
+    for (uint32_t hn = 0; hn < ps[p].haloNodesOrdered.len; ++hn) {
+      addToArr(&globalHaloNodesScheduled, ps[p].haloNodesOrdered.arr[hn]);
+    }
+    for (uint32_t hc = 0; hc < ps[p].haloCellsOrdered.len; ++hc) {
+      addToArr(&globalHaloCellsScheduled, ps[p].haloCellsOrdered.arr[hc]);
+    }
+
+  }
+  
+  printf("Created global schedules, total edges - noop edges = %d\n", schEdges - num_nop_edges);
   /*Diagnostic messages, etc...*/
   uint32_t total_halo_cells = 0;
   for (uint32_t i = 0; i < num_parts; ++i) {
