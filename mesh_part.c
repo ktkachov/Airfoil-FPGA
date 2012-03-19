@@ -30,11 +30,13 @@
 #define NODES_PER_PARTITION (CELLS_PER_PARTITION)
 
 /*This depends on the arithmetic pipeline depth on the FPGA*/
-#define PIPELINE_LATENCY 5
-#define BOTTOM_LEVEL_PARTITIONS (5 * PIPELINE_LATENCY)
+#define PIPELINE_LATENCY 1
+#define BOTTOM_LEVEL_PARTITIONS (100 * PIPELINE_LATENCY)
 
 #define PRIME 60013
 #define SMALL_PRIME 10007
+
+#define NOP_EDGE UINT_MAX
 
 /*colourNames is used to create a DOT file that dumps graphs in a renderable format*/
 const char* colourNames[] = {
@@ -75,13 +77,22 @@ typedef struct size_vector_struct {
   uint32_t nhd2_cells, nhd2_nodes, nhd2_edges;
 } size_vector_t;
 
+typedef struct edge_address_struct {
+  uint32_t node[2];
+  uint32_t cell[2];
+} edge_struct;
+
 typedef struct internal_partition_struct {
   arr_t cells;
   arr_t edges;
   arr_t nodes;
   ugraph* cg; /*Connectivity graph for internal partitions*/
   uint32_t* partitionsOrdered;
-  uint32_t* edgesOrdered;
+  arr_t edgesOrdered;
+  uint32_t nop_edges;
+
+  edge_struct* edgeStructsOrdered;
+
   uint32_t* c2n; /* cells to nodes local map*/
   hash_map* g2l_nodes; /*global to local node numbers*/
   hash_map* g2l_cells; /*global to local cell numbers*/
@@ -193,6 +204,26 @@ void colourGraph(ugraph* graph) {
   graph->num_colours = ncolours-1;
 }
 
+uint32_t** toAdjacencyMatrix(ugraph* g) {
+  uint32_t** mat = malloc(g->num_nodes * sizeof(*mat));
+  for (uint32_t i = 0; i < g->num_nodes; ++i) {
+    mat[i] = malloc(g->num_nodes * sizeof(mat[i]));
+  }
+  for (uint32_t i = 0; i < g->num_nodes; ++i) {
+    for (uint32_t j = 0; j < g->num_nodes; ++j) {
+      mat[i][j] = elem(g->adj_list[i], g->adj_sizes[i], j);
+    }
+  }
+  return mat;
+}
+
+void destroyMatrix(uint32_t** mat, uint32_t s) {
+  for (uint32_t i = 0; i < s; ++i) {
+    free(mat[i]);
+  }
+  free(mat);
+}
+
 int validSchedule(ugraph* g, uint32_t* sch) {
   for (uint32_t i = 0; i < g->num_nodes-1; ++i) {
     for (uint32_t j = i+1; j < (i+1+PIPELINE_LATENCY) % g->num_nodes; ++j) {
@@ -205,13 +236,13 @@ int validSchedule(ugraph* g, uint32_t* sch) {
   return 1;
 }
 
-int validPos(uint32_t* arr, uint32_t node, uint32_t nnodes, uint32_t count, uint32_t** al, uint32_t* as) {
+int validPos(uint32_t* arr, uint32_t node, uint32_t nnodes, uint32_t count, uint32_t** mat) {
 //  if (elem(arr, count, node)) {
 //    return 0;
 //  }
   if (count <= PIPELINE_LATENCY) {
     for (uint32_t i = 0; i < count; ++i) {
-      if (elem(al[arr[i]], as[arr[i]], node)) {
+      if (mat[arr[i]][node]) {
         return 0;
       }
     }
@@ -219,28 +250,28 @@ int validPos(uint32_t* arr, uint32_t node, uint32_t nnodes, uint32_t count, uint
   }
   if (count > nnodes - PIPELINE_LATENCY) {
     for (uint32_t i = 0; i < PIPELINE_LATENCY - (nnodes - count); ++i) {
-      if (elem(al[arr[i]], as[arr[i]], node)) {
+      if (mat[arr[i]][node]) {
         return 0;
       }
     }
   }
   for (uint32_t i = count - PIPELINE_LATENCY - 1; i < count; ++i) {
-    if (elem(al[arr[i]], as[arr[i]], node)) {
+    if (mat[arr[i]][node]) {
       return 0;
     }
   }
   return 1;
 }
 
-int sched(uint32_t n, uint32_t* res, uint32_t* count, short* elems, uint32_t** al, uint32_t* as, uint32_t nnodes) {
+int sched(uint32_t n, uint32_t* res, uint32_t* count, short* elems, uint32_t** mat,  uint32_t nnodes) {
   res[(*count)++] = n;
   if ((*count) == nnodes) {
     return 1;
   }
   elems[n] = 1;
   for (uint32_t i = 0; i < nnodes; ++i) {
-    if ((elems[i] == 0) && !elem(al[n], as[n], i) && validPos(res, i, nnodes, *count, al, as)) {
-      if (sched(i, res, count, elems, al, as, nnodes)) {
+    if (!elems[i] && !mat[n][i] && validPos(res, i, nnodes, *count, mat)) {
+      if (sched(i, res, count, elems, mat, nnodes)) {
         return 1;
       }
     }
@@ -255,10 +286,10 @@ uint32_t* scheduleGraph2(ugraph* g) {
   uint32_t* res = malloc(g->num_nodes * sizeof(*res));
   uint32_t count = 0;
   short* elems = calloc(g->num_nodes, sizeof(*elems));
-  uint32_t** al = g->adj_list;
-  uint32_t* as = g->adj_sizes;
+  uint32_t** mat = toAdjacencyMatrix(g);
   for (uint32_t i = 0; i < g->num_nodes; ++i) {
-    if (sched(i, res, &count, elems, al, as, g->num_nodes)) {
+    if (sched(i, res, &count, elems, mat,  g->num_nodes)) {
+      destroyMatrix(mat, g->num_nodes);
       free(elems);
       return res;
     }
@@ -269,8 +300,7 @@ uint32_t* scheduleGraph2(ugraph* g) {
 
 uint32_t* scheduleGraph(ugraph* g) {
   uint32_t* res = malloc(g->num_nodes * sizeof(*res));
-  uint32_t** al = g->adj_list;
-  uint32_t* as  = g->adj_sizes;
+  uint32_t** mat = toAdjacencyMatrix(g);
   short* elems = calloc(g->num_nodes, sizeof(*elems));
   stack* counts = createStack();
   uint32_t count = 0;
@@ -278,6 +308,7 @@ uint32_t* scheduleGraph(ugraph* g) {
   for (uint32_t i = 0; i < g->num_nodes; ++i) {
     stack_push(st, g->num_nodes - 1 - i);
   }
+  stack_push(counts, g->num_nodes);
   while (!stack_isEmpty(st)) {
     uint32_t n = stack_pop(st);
     res[count++] = n;
@@ -285,12 +316,13 @@ uint32_t* scheduleGraph(ugraph* g) {
     if (count == g->num_nodes) {
       destroyStack(st);
       destroyStack(counts);
+      destroyMatrix(mat, g->num_nodes);
       free(elems);
       return res;
     }
     uint32_t children = 0;
     for (uint32_t i = 0; i < g->num_nodes; ++i) {
-      if (n != i && !elem(al[n], as[n], i) && (elems[i] == 0) && validPos(res, i, g->num_nodes, count, al, as)) {
+      if (n != i && !mat[i][n] && !elems[i] && validPos(res, i, g->num_nodes, count, mat)) {
         stack_push(st, i);
         ++children;
       }
@@ -298,14 +330,16 @@ uint32_t* scheduleGraph(ugraph* g) {
     if (children != 0) {
       stack_push(counts, children);
     } else {
-      if (stack_peek(counts) <= 1) {
-        stack_pop(counts);
-        elems[res[--count]] = 0;
-      } else {
-        counts->top->val--; /*FIXME: Major breakage of encapsulation!!!!!*/
-      }
-      elems[n] = 0;
-      --count;
+        elems[n] = 0;
+        --count;
+        counts->top->val--;
+        while (!stack_isEmpty(counts) && stack_peek(counts) == 0) {
+          stack_pop(counts);
+          elems[res[--count]] = 0;
+          if (!stack_isEmpty(counts)) {
+            counts->top->val--;
+          }
+        }
     }
   }
   printf("ERROR! Could not schedule graph!\n");
@@ -375,7 +409,7 @@ void removeDupsArr(arr_t* a) {
   a->arr = realloc(a->arr, a->len * sizeof(*(a->arr)));
 }
 
-inline uint32_t elem(uint32_t* arr, uint32_t len, uint32_t x) {
+uint32_t elem(uint32_t* arr, uint32_t len, uint32_t x) {
   for (uint32_t i = 0; i < len; ++i) {
     if (arr[i] == x) {
       return 1;
@@ -596,6 +630,7 @@ int main(int argc, char* argv[]) {
   }
 
 
+  uint32_t num_nop_edges = 0;
   uint32_t p_edges = 0;
   for (uint32_t i = 0; i < num_parts; ++i) {
     printf("Partition %d has %d cells, %d nodes, %d edges\n", i, ps[i].cells.len, ps[i].nodes.len, ps[i].edges.len);
@@ -871,28 +906,62 @@ int main(int argc, char* argv[]) {
     //printf("Partition %d has %d ordered nodes and %d ordered halo nodes, total nodes in partition: %d\n", i, ps[i].nodesOrdered.len, ps[i].haloNodesOrdered.len, ps[i].nodes.len);
 
     for (short p = 0; p < 2; ++p) { 
-      ps[i].iparts[p].partitionsOrdered = malloc(ps[i].iparts[p].cg->num_nodes * sizeof(*ps[i].iparts[p].partitionsOrdered));
-      uint32_t pnum = 0;
-      for (uint32_t col = 0; col < ps[i].iparts[p].cg->num_colours; ++col) {
-        for (uint32_t n = 0; n < ps[i].iparts[p].cg->num_nodes; ++n) {
-          if (ps[i].iparts[p].cg->colours[n] == col) {
-            ps[i].iparts[p].partitionsOrdered[pnum++] = n;
-          }
-        }
-      }
-      ps[i].iparts[p].edgesOrdered = malloc(ps[i].iparts[p].edges.len * sizeof(*ps[i].iparts[p].edgesOrdered));
+      initArr(&ps[i].iparts[p].edgesOrdered, EDGES_PER_PARTITION / 2);
       ugraph* g = ps[i].iparts[p].cg;
     //  colour_list* cl = toColourList(g);
-      uint32_t* partsScheduled = scheduleGraph2(g);
+      ps[i].iparts[p].partitionsOrdered = scheduleGraph(g);
       printf("Scheduled partition graph for partition %d of %d is: \n", p, i);
-      printf("is schedule valid? %d\n", validSchedule(g, partsScheduled));
-      for (uint32_t i = 0; i < g->num_nodes; ++i) {
-        printf("%d, ", partsScheduled[i]);
+      printf("is schedule valid? %d\n", validSchedule(g, ps[i].iparts[p].partitionsOrdered ));
+      for (uint32_t j = 0; j < g->num_nodes; ++j) {
+        printf("%d, ", ps[i].iparts[p].partitionsOrdered [j]);
       }
       printf("\n");
     //  showGraph(g);
       printf("-----------------\n");
-      free(partsScheduled);
+
+
+      uint32_t* partsOrdered = ps[i].iparts[p].partitionsOrdered;
+      uint32_t hMax = 0;
+      for (uint32_t j = 0; j < BOTTOM_LEVEL_PARTITIONS; ++j) {
+        hMax = ps[i].iparts[p].parts_edges[j].len > hMax ? ps[i].iparts[p].parts_edges[j].len : hMax;
+      }
+      ps[i].iparts[p].nop_edges = 0;
+      for (uint32_t h = 0; h < hMax; ++h) {
+        for (uint32_t pp = 0; pp < BOTTOM_LEVEL_PARTITIONS; ++pp) {
+          if (ps[i].iparts[p].parts_edges[partsOrdered[pp]].len <= h) {
+            addToArr(&ps[i].iparts[p].edgesOrdered, NOP_EDGE);
+            ps[i].iparts[p].nop_edges++;
+          } else {
+            addToArr(&ps[i].iparts[p].edgesOrdered, ps[i].iparts[p].parts_edges[partsOrdered[pp]].arr[h]);
+          }
+        }
+      }
+      num_nop_edges += ps[i].iparts[p].nop_edges;
+      printf("Added %d nop edges in part %d of part %d, nop to edge ratio: %.4f\n", ps[i].iparts[p].nop_edges, p, i, (float)ps[i].iparts[p].nop_edges / ps[i].iparts[p].edges.len);
+     
+      ps[i].iparts[p].edgeStructsOrdered = malloc(ps[i].iparts[p].edgesOrdered.len * sizeof(*ps[i].iparts[p].edgeStructsOrdered));
+      for (uint32_t e = 0; e < ps[i].iparts[p].edgesOrdered.len; ++e) {
+        if (ps[i].iparts[p].edgesOrdered.arr[e] == NOP_EDGE) {
+          ps[i].iparts[p].edgeStructsOrdered[e].node[0] = 0;
+          ps[i].iparts[p].edgeStructsOrdered[e].node[1] = 0;
+          ps[i].iparts[p].edgeStructsOrdered[e].cell[0] = 0;
+          ps[i].iparts[p].edgeStructsOrdered[e].cell[1] = 0;
+        } else {
+          uint32_t ed = ps[i].iparts[p].edgesOrdered.arr[e];
+          uint32_t node_g[2]; /*Globally numbered nodes*/
+          uint32_t cell_g[2];  /*Globally numbered cells*/
+          node_g[0] = edge[2*ed];
+          node_g[1] = edge[2*ed+1];
+          cell_g[0] = ecell[2*ed];
+          cell_g[1] = ecell[2*ed+1];
+          for (short ii = 0; ii < 2; ++ii) {
+            ps[i].iparts[p].edgeStructsOrdered[e].node[ii] = getValue(ps[i].nodeAddressMap, node_g[ii]);
+            ps[i].iparts[p].edgeStructsOrdered[e].cell[ii] = getValue(ps[i].cellAddressMap, cell_g[ii]);
+          }
+        }
+      }
+
+ 
       //printf("colour list for subpartition %d of partition %d\n", p, i);
       //showColourListSizes(cl);
       //free(cl);
@@ -929,6 +998,7 @@ int main(int argc, char* argv[]) {
   end = clock();
   printf("Nodes: %u, Edges: %u, Cells: %u, number of partitions: %u\n", nnode, nedge, ncell, num_parts);
   printf("ratio of halo cells to non-halo cells is: %.2f, total halo cells: %d\n", h2nhCells, total_halo_cells);
+  printf("ratio of nop edges to edges %.2f, with %d nop edges\n", (float)num_nop_edges / nedge, num_nop_edges);
   printf("time taken: %lf seconds\n", (double)(end - start)/CLOCKS_PER_SEC);
   
 }
