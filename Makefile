@@ -8,7 +8,7 @@ mesh: mesh_part.c airfoil_utils.h airfoil_kernels.h Makefile
 	$(CC) -o $@ $(CCFLAGS) $(METIS_INC) $(METIS_LDINC) $< $(LDFLAGS)
 
 airfoil: airfoil.cpp
-	g++ -o $@ -O3 -lm $<
+	g++ -o $@ -Wall -Werror -O3 -lm $<
 
 %.svg: %.dot
 	./dot2svg $<

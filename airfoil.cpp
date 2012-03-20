@@ -29,9 +29,6 @@ int main(int argc, char **argv){
   int nnode,ncell,nedge,nbedge,niter;
   float rms;
   
-  //timer
-  float cpu_t1, cpu_t2, wall_t1, wall_t2;
-
   // read in grid
 
   printf("reading in grid \n");
@@ -98,7 +95,7 @@ int main(int argc, char **argv){
 
 
   float mach = 0.4f;
-  float alpha = 3.0f*atan(1.0f)/45.0f;
+  //float alpha = 3.0f*atan(1.0f)/45.0f;
   float p = 1.0f;
   float r = 1.0f;
   float u = sqrt(gam*p/r)*mach;
