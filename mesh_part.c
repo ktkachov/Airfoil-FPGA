@@ -25,13 +25,13 @@
 #include "metis.h"
 #include "airfoil_utils.h"
 
-#define CELLS_PER_PARTITION (1<<14)
+#define CELLS_PER_PARTITION (1<<13)
 #define EDGES_PER_PARTITION (CELLS_PER_PARTITION * 2)
 #define NODES_PER_PARTITION (CELLS_PER_PARTITION)
 
 /*This depends on the arithmetic pipeline depth on the FPGA*/
 #define PIPELINE_LATENCY 1
-#define BOTTOM_LEVEL_PARTITIONS (100 * PIPELINE_LATENCY)
+#define NUM_MICRO_PARTITIONS (100 * PIPELINE_LATENCY)
 
 #define PRIME 60013
 #define SMALL_PRIME 10007
@@ -759,7 +759,7 @@ int main(int argc, char* argv[]) {
       for (uint32_t k = 0; k < ip->cells.len + 1; ++k) {
         pcptr[k] = 4*k;
       }
-      nparts = BOTTOM_LEVEL_PARTITIONS;
+      nparts = NUM_MICRO_PARTITIONS;
       uint32_t* intcpart = malloc((ip->cells.len+1) * sizeof(*intcpart));
       uint32_t* intnpart = malloc(ip->nodes.len * sizeof(*intnpart));
       METIS_PartMeshNodal((int*)&ip->cells.len,(int*)&ip->nodes.len, (int*)pcptr, (int*)ip->c2n, NULL, NULL, (int*)&nparts, NULL, NULL, &objval, (int*)intcpart, (int*)intnpart);
@@ -916,7 +916,7 @@ int main(int argc, char* argv[]) {
       initArr(&ps[i].iparts[p].edgesOrdered, EDGES_PER_PARTITION / 2);
       ugraph* g = ps[i].iparts[p].cg;
     //  colour_list* cl = toColourList(g);
-      ps[i].iparts[p].partitionsOrdered = scheduleGraph(g, PIPELINE_LATENCY);
+      ps[i].iparts[p].partitionsOrdered = scheduleGraph2(g, PIPELINE_LATENCY);
       printf("Scheduled partition graph for partition %d of %d is: \n", p, i);
       printf("is schedule valid? %d\n", validSchedule(g, ps[i].iparts[p].partitionsOrdered , PIPELINE_LATENCY));
       for (uint32_t j = 0; j < g->num_nodes; ++j) {
@@ -924,17 +924,16 @@ int main(int argc, char* argv[]) {
       }
       printf("\n");
     //  showGraph(g);
-      printf("-----------------\n");
 
 
       uint32_t* partsOrdered = ps[i].iparts[p].partitionsOrdered;
       uint32_t hMax = 0;
-      for (uint32_t j = 0; j < BOTTOM_LEVEL_PARTITIONS; ++j) {
+      for (uint32_t j = 0; j < NUM_MICRO_PARTITIONS; ++j) {
         hMax = ps[i].iparts[p].parts_edges[j].len > hMax ? ps[i].iparts[p].parts_edges[j].len : hMax;
       }
       ps[i].iparts[p].nop_edges = 0;
       for (uint32_t h = 0; h < hMax; ++h) {
-        for (uint32_t pp = 0; pp < BOTTOM_LEVEL_PARTITIONS; ++pp) {
+        for (uint32_t pp = 0; pp < NUM_MICRO_PARTITIONS; ++pp) {
           if (ps[i].iparts[p].parts_edges[partsOrdered[pp]].len <= h) {
             addToArr(&ps[i].iparts[p].edgesOrdered, NOP_EDGE);
             ps[i].iparts[p].nop_edges++;
@@ -971,11 +970,14 @@ int main(int argc, char* argv[]) {
         printf("Edge %d is: {%d, %d, %d, %d}\n", e, estr->node[0], estr->node[1], estr->cell[0], estr->cell[1]);
         */
       }
+    printf("\n-------------------\n");
     }
 
  }
 
   uint32_t* glPartsSched = scheduleGraph(pg, 1);
+
+
   arr_t globalNodesScheduled;
   arr_t globalCellsScheduled;
   arr_t globalHaloNodesScheduled;
@@ -987,8 +989,8 @@ int main(int argc, char* argv[]) {
 
   size_vector_t* size_vectors = malloc(num_parts * sizeof(*size_vectors));
 
-  edge_struct* globalEdgeStructsScheduled = malloc(nedge * sizeof(*globalEdgeStructsScheduled));
-  uint32_t* globalEdgesScheduled = malloc(nedge * sizeof(*globalEdgesScheduled));
+  edge_struct* globalEdgeStructsScheduled = malloc((nedge + num_nop_edges) * sizeof(*globalEdgeStructsScheduled));
+  uint32_t* globalEdgesScheduled = malloc((nedge + num_nop_edges) * sizeof(*globalEdgesScheduled));
   uint32_t schEdges = 0;
   for (uint32_t i = 0; i < num_parts; ++i) {
     uint32_t p = glPartsSched[i];
@@ -1021,16 +1023,15 @@ int main(int argc, char* argv[]) {
       }
     }
     for (uint32_t hn = 0; hn < ps[p].haloNodesOrdered.len; ++hn) {
+     // printf("adding %d at %d to globalHaloNodesScheduled\n", ps[p].haloNodesOrdered.arr[hn], globalHaloNodesScheduled.len);
+     // printf("the maxsize of halonodes ordered is:%d\n", globalHaloNodesScheduled.maxLen);
       addToArr(&globalHaloNodesScheduled, ps[p].haloNodesOrdered.arr[hn]);
     }
     for (uint32_t hc = 0; hc < ps[p].haloCellsOrdered.len; ++hc) {
       addToArr(&globalHaloCellsScheduled, ps[p].haloCellsOrdered.arr[hc]);
     }
-
   }
-  
-  printf("Created global schedules, total edges - noop edges = %d\n", schEdges - num_nop_edges);
-  /*Diagnostic messages, etc...*/
+    /*Diagnostic messages, etc...*/
   uint32_t total_halo_cells = 0;
   for (uint32_t i = 0; i < num_parts; ++i) {
     uint32_t total = 0;
@@ -1048,17 +1049,23 @@ int main(int argc, char* argv[]) {
   colourGraph(pg);
   printf("Top level graph of mesh partitions:\n");
   showGraph(pg);
+  printf("The top-level scheduled partition graph is:\n");
+  for (uint32_t i = 0; i < pg->num_nodes; ++i) {
+    printf("%d, ", glPartsSched[i]);
+  }
+  printf("\n");
 
-  printf("Generating partition processing order...\n");
-  colour_list* cl_global = toColourList(pg);
-  printf("Colour list for global partitioning graph:\n");
-  showColourListSizes(cl_global);
+  //colour_list* cl_global = toColourList(pg);
+  //printf("Colour list for global partitioning graph:\n");
   const char* fileName = "meshColoured.dot";
   printf("Writing partition graph to %s ...\n", fileName);
   generateDotGraph(pg, fileName, ps);
   end = clock();
   printf("Nodes: %u, Edges: %u, Cells: %u, number of partitions: %u\n", nnode, nedge, ncell, num_parts);
   printf("ratio of halo cells to non-halo cells is: %.2f, total halo cells: %d\n", h2nhCells, total_halo_cells);
+  printf("Global scheduled nodes:%d, cells: %d\n", globalNodesScheduled.len, globalCellsScheduled.len);
+  printf("Global scheduled halo nodes:%d, cells:%d\n", globalHaloNodesScheduled.len, globalHaloCellsScheduled.len);
+  printf("Created global schedules, total edges = %d\n", schEdges);
   printf("ratio of nop edges to edges %.2f, with %d nop edges\n", (float)num_nop_edges / nedge, num_nop_edges);
   printf("time taken: %lf seconds\n", (double)(end - start)/CLOCKS_PER_SEC);
   
