@@ -1,8 +1,16 @@
 #ifndef AIRFOIL_KERNELS_H
 #define AIRFOIL_KERNELS_H
 
-void adt_calc(float *x1,float *x2,float *x3,float *x4,float *q,float *adt){
-  float dx,dy, ri,u,v,c;
+#define ARITH_TYPE float
+
+extern float gam;
+extern float gm1;
+extern float cfl;
+extern float eps;
+extern float qinf[4];
+
+void adt_calc(ARITH_TYPE *x1,ARITH_TYPE *x2,ARITH_TYPE *x3,ARITH_TYPE *x4,ARITH_TYPE *q,ARITH_TYPE *adt){
+  ARITH_TYPE dx,dy, ri,u,v,c;
 
   ri = 1.0f/q[0];
   u = ri*q[1];
@@ -28,9 +36,9 @@ void adt_calc(float *x1,float *x2,float *x3,float *x4,float *q,float *adt){
   *adt = (*adt) / cfl;
 }
 
-void bres_calc(float *x1, float *x2, float *q1,
-                      float *adt1,float *res1,long *bound) {
-  float dx,dy,mu, ri, p1,vol1, p2,vol2, f;
+void bres_calc(ARITH_TYPE *x1, ARITH_TYPE *x2, ARITH_TYPE *q1,
+                      ARITH_TYPE *adt1,ARITH_TYPE *res1, int *bound) {
+  ARITH_TYPE dx,dy,mu, ri, p1,vol1, p2,vol2, f;
 
   dx = x1[0] - x2[0];
   dy = x1[1] - x2[1];
@@ -62,10 +70,10 @@ void bres_calc(float *x1, float *x2, float *q1,
   }
 }
 
-void res_calc(float *x1, float *x2, float *q1, float *q2,
-                     float *adt1,float *adt2,float *res1,float *res2) {
+void res_calc(ARITH_TYPE *x1, ARITH_TYPE *x2, ARITH_TYPE *q1, ARITH_TYPE *q2,
+                     ARITH_TYPE *adt1,ARITH_TYPE *adt2,ARITH_TYPE *res1,ARITH_TYPE *res2) {
   
-  float dx,dy,mu, ri, p1,vol1, p2,vol2, f;
+  ARITH_TYPE dx,dy,mu, ri, p1,vol1, p2,vol2, f;
 
   dx = x1[0] - x2[0];
   dy = x1[1] - x2[1];
@@ -94,12 +102,12 @@ void res_calc(float *x1, float *x2, float *q1, float *q2,
   res2[3] -= f;
 }
 
-void save_soln(float *q, float *qold){
+void save_soln(ARITH_TYPE *q, ARITH_TYPE *qold){
   for (int n=0; n<4; n++) qold[n] = q[n];
 }
 
-void update(float *qold, float *q, float *res, float *adt, float *rms){
-  float del, adti;
+void update(ARITH_TYPE *qold, ARITH_TYPE *q, ARITH_TYPE *res, ARITH_TYPE *adt, ARITH_TYPE *rms){
+  ARITH_TYPE del, adti;
 
   adti = 1.0f/(*adt);
 

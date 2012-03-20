@@ -42,18 +42,18 @@ int main(int argc, char **argv){
     printf("error reading from new_grid.dat\n"); exit(-1);
   }
 
-  cell = (int *) malloc(4*ncell*sizeof(int));
-  edge = (int *) malloc(2*nedge*sizeof(int));
-  ecell = (int *) malloc(2*nedge*sizeof(int));
-  bedge = (int *) malloc(2*nbedge*sizeof(int));
-  becell = (int *) malloc( nbedge*sizeof(int));
-  bound = (int *) malloc( nbedge*sizeof(int));
+  cell = new int[4*ncell];
+  edge = new int[2*nedge];
+  ecell = new int[2*nedge];
+  bedge = new int[2*nbedge];
+  becell = new int[nbedge];
+  bound = new int[nbedge];
 
-  x = (float *) malloc(2*nnode*sizeof(float));
-  q = (float *) malloc(4*ncell*sizeof(float));
-  qold = (float *) malloc(4*ncell*sizeof(float));
-  res = (float *) malloc(4*ncell*sizeof(float));
-  adt = (float *) malloc( ncell*sizeof(float));
+  x = new float[2*nnode];
+  q = new float[4*ncell];  
+  qold = new float[4*ncell];
+  res = new float[4*ncell];
+  adt = new float[ncell];
 
   for (int n=0; n<nnode; n++) {
     if (fscanf(fp,"%f %f \n",&x[2*n], &x[2*n+1]) != 2) {
