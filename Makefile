@@ -1,10 +1,10 @@
 CC = gcc
-CCFLAGS = -Wall -Werror -pedantic -std=c99 -O3
+CCFLAGS = -Wall -Werror -pedantic -std=c99 -g
 METIS_INC = -I/homes/kt208/metis/metis_install/include/
 METIS_LDINC = -L/homes/kt208/metis/metis_install/lib/
 LDFLAGS = -lm -lmetis
 
-mesh: mesh_part.c airfoil_utils.h Makefile
+mesh: mesh_part.c airfoil_utils.h airfoil_kernels.h Makefile
 	$(CC) -o $@ $(CCFLAGS) $(METIS_INC) $(METIS_LDINC) $< $(LDFLAGS)
 
 airfoil: airfoil.cpp
