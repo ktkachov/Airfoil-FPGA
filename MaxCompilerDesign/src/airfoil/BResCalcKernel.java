@@ -2,7 +2,7 @@ package airfoil;
 
 import static utils.Utils.array2_t;
 import static utils.Utils.array4_t;
-import static utils.Utils.float_t;
+import static utils.Utils.arith_t;
 
 import com.maxeler.maxcompiler.v1.kernelcompiler.Kernel;
 import com.maxeler.maxcompiler.v1.kernelcompiler.KernelParameters;
@@ -16,13 +16,13 @@ public class BResCalcKernel extends Kernel {
 		KArray<HWVar> x1 = io.input("x1", array2_t);
 		KArray<HWVar> x2 = io.input("x2", array2_t);
 		KArray<HWVar> q1 = io.input("q1", array4_t);
-		HWVar adt1 = io.input("adt1", float_t);
+		HWVar adt1 = io.input("adt1", arith_t);
 		HWVar bound = io.input("bound", hwBool());
 		HWVar dx = x1[0] - x2[0];
 		HWVar dy = x1[1] - x2[1];
 		HWVar ri = 1.0f / q1[0];
 
-		HWVar gm1 = io.scalarInput("gm1", float_t);
+		HWVar gm1 = io.scalarInput("gm1", arith_t);
 
 		HWVar p1 = gm1*(q1[3]-0.5f*ri*(q1[1]*q1[1]+q1[2]*q1[2]));
 
@@ -34,7 +34,7 @@ public class BResCalcKernel extends Kernel {
 		HWVar newRi =  1.0f/qinf[0];
 		HWVar p2 =  gm1*(qinf[3]-0.5f*ri*(qinf[1]*qinf[1]+qinf[2]*qinf[2]));
 		HWVar vol2 =  newRi*(qinf[1]*dy - qinf[2]*dx);
-		HWVar eps = io.scalarInput("eps", float_t);
+		HWVar eps = io.scalarInput("eps", arith_t);
 		HWVar mu = adt1*eps;
 
 		res1[0] <== bound ? 0.0f   : 0.5f*(vol1* q1[0] + vol2* qinf[0]) + mu*(q1[0]-qinf[0]);

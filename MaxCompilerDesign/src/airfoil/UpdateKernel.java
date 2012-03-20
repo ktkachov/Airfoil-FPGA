@@ -1,6 +1,6 @@
 package airfoil;
 import static utils.Utils.array4_t;
-import static utils.Utils.float_t;
+import static utils.Utils.arith_t;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,7 +20,7 @@ public class UpdateKernel extends Kernel {
 		KArray<HWVar> qold = io.input("qold", array4_t);
 		KArray<HWVar> res = io.input("res", array4_t);
 
-		HWVar adt = io.input("adt", float_t);
+		HWVar adt = io.input("adt", arith_t);
 		HWVar adti = 1.0f / adt;
 		KArray<HWVar> q = array4_t.newInstance(this);
 		List<HWVar> rmsToSum = new ArrayList<HWVar>(4);
@@ -38,7 +38,7 @@ public class UpdateKernel extends Kernel {
 
 		HWVar rmsSum = Utils.adderTree(rmsToSum);
 		HWVar count = control.count.simpleCounter(32);
-		HWVar carriedSum = float_t.newInstance(this);
+		HWVar carriedSum = arith_t.newInstance(this);
 		HWVar rms = count.eq(0) ? 0.0 : carriedSum;
 		HWVar newSum = rms + rmsSum;
 		carriedSum <== stream.offset(newSum, -loopLength);

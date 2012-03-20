@@ -23,6 +23,7 @@ public class ResControlSM extends KernelStateMachine {
 		final SMStateValue nodes;
 		final SMStateValue cells;
 		final SMStateValue halo_cells;
+		final SMStateValue halo_nodes;
 		final SMStateValue edges;
 		final SMStateValue iph_cells; // Intra partition halo cells
 		final SMStateValue iph_nodes;
@@ -35,16 +36,17 @@ public class ResControlSM extends KernelStateMachine {
 		final SMStateValue nhd2_edges;
 
 		public Sizes(SMStateValue nodes, SMStateValue cells,
-				SMStateValue haloCells, SMStateValue edges,
-				SMStateValue iph_cells, SMStateValue iph_nodes,
-				SMStateValue iph_edges, SMStateValue nhd1_cells,
-				SMStateValue nhd1_edges, SMStateValue nhd1_nodes,
-				SMStateValue nhd2_cells, SMStateValue nhd2_nodes,
-				SMStateValue nhd2_edges) {
+				SMStateValue halo_cells, SMStateValue halo_nodes,
+				SMStateValue edges, SMStateValue iph_cells,
+				SMStateValue iph_nodes, SMStateValue iph_edges,
+				SMStateValue nhd1_cells, SMStateValue nhd1_edges,
+				SMStateValue nhd1_nodes, SMStateValue nhd2_cells,
+				SMStateValue nhd2_nodes, SMStateValue nhd2_edges) {
 			super();
 			this.nodes = nodes;
 			this.cells = cells;
-			this.halo_cells = haloCells;
+			this.halo_cells = halo_cells;
+			this.halo_nodes = halo_nodes;
 			this.edges = edges;
 			this.iph_cells = iph_cells;
 			this.iph_nodes = iph_nodes;
@@ -57,6 +59,8 @@ public class ResControlSM extends KernelStateMachine {
 			this.nhd2_edges = nhd2_edges;
 		}
 
+
+
 	}
 
 	private final Sizes sizes;
@@ -67,7 +71,8 @@ public class ResControlSM extends KernelStateMachine {
 	private final SMStateValue nodes_count;
 	private final SMStateValue cells_count;
 	private final SMStateValue edges_count;
-	private final SMStateValue halo_read_count;
+	private final SMStateValue halo_cell_read_count;
+	private final SMStateValue halo_node_read_count;
 	private final SMStateValue halo_read_delay_count;
 	private final SMStateValue halo_write_delay_count;
 	private final SMStateValue read_sizes_state;
@@ -78,7 +83,8 @@ public class ResControlSM extends KernelStateMachine {
 	private final SMOutput processing;
 	private final SMOutput writing;
 	private final SMOutput writing_halo;
-	private final SMOutput halo_read;
+	private final SMOutput halo_read_cell;
+	private final SMOutput halo_read_node;
 	private final SMOutput read_sizes;
 	private final SMOutput read_edge;
 	private final SMOutput read_cell;
@@ -90,6 +96,7 @@ public class ResControlSM extends KernelStateMachine {
 	private final SMInput nodes_in;
 	private final SMInput cells_in;
 	private final SMInput halo_cells_in;
+	private final SMInput halo_nodes_in;
 	private final SMInput edges_in;
 	private final SMInput iph_cells_in; // Intra partition halo cells
 	private final SMInput iph_nodes_in;
@@ -110,8 +117,9 @@ public class ResControlSM extends KernelStateMachine {
 		nodes_count 			= state.value(smUInt(width), 0);
 		cells_count 			= state.value(smUInt(width), 0);
 		edges_count 			= state.value(smUInt(width), 0);
-		halo_read_count 		= state.value(smUInt(width), 0);
-		halo_read_delay_count 		= state.value(smUInt(width), 0);
+		halo_cell_read_count 	= state.value(smUInt(width), 0);
+		halo_node_read_count	= state.value(smUInt(width), 0);
+		halo_read_delay_count 	= state.value(smUInt(width), 0);
 		read_sizes_state		= state.value(smBool(), true);
 		process_count			= state.value(addr_t, 0);
 		write_count				= state.value(addr_t, 0);
@@ -127,6 +135,7 @@ public class ResControlSM extends KernelStateMachine {
 		nodes_in		= io.input("nodes", addr_t);
 		cells_in		= io.input("cells", addr_t);
 		halo_cells_in	= io.input("halo_cells", addr_t);
+		halo_nodes_in 	= io.input("halo_nodes", addr_t);
 
 		nhd1_cells_in 	= io.input("nhd1_cells", addr_t);
 		nhd1_edges_in	= io.input("nhd1_edges", addr_t);
@@ -141,16 +150,18 @@ public class ResControlSM extends KernelStateMachine {
 		nhd2_nodes_in	= io.input("nhd2_nodes", addr_t);
 
 
-		processing 	= io.output("processing", smBool());
-		writing 	= io.output("writing", smBool());
-		halo_read 	= io.output("halo_read", smBool());
-		read_sizes 	= io.output("read_sizes", smBool());
-		read_edge 	= io.output("read_edge", smBool());
-		read_cell	= io.output("read_cell", smBool());
-		read_node 	= io.output("read_node", smBool());
-		writing_halo= io.output("writing_halo", smBool());
+		processing 		= io.output("processing", smBool());
+		writing 		= io.output("writing", smBool());
+		halo_read_cell 	= io.output("halo_read_cell", smBool());
+		halo_read_node	= io.output("halo_read_node", smBool());
+		read_sizes 		= io.output("read_sizes", smBool());
+		read_edge 		= io.output("read_edge", smBool());
+		read_cell		= io.output("read_cell", smBool());
+		read_node 		= io.output("read_node", smBool());
+		writing_halo	= io.output("writing_halo", smBool());
 
 		sizes = new Sizes(state.value(addr_t, 0),
+					state.value(addr_t, 0),
 					state.value(addr_t, 0),
 					state.value(addr_t, 0),
 					state.value(addr_t, 0),
@@ -170,12 +181,13 @@ public class ResControlSM extends KernelStateMachine {
 
 	private SMValue finishedPartition() {
 		return (nodes_count === sizes.nodes) &
-				(cells_count === sizes.cells) &
-				(halo_read_count === sizes.halo_cells) &
-				(process_count === sizes.edges) &
-				(write_count === sizes.edges) &
-				(write_halo_count === sizes.halo_cells)
-				;
+		(cells_count === sizes.cells) &
+		(halo_cell_read_count === sizes.halo_cells) &
+		(halo_node_read_count === sizes.halo_nodes) &
+		(process_count === sizes.edges) &
+		(write_count === sizes.edges) &
+		(write_halo_count === sizes.halo_cells)
+		;
 	}
 
 		@Override
@@ -183,8 +195,9 @@ public class ResControlSM extends KernelStateMachine {
 			SMValue finishedPartition = finishedPartition();
 			read_sizes_state.next <== finishedPartition;
 			IF (read_sizes_state) {
-				halo_read_count.next <== 0;
+				halo_cell_read_count.next <== 0;
 				halo_read_delay_count.next <== 0;
+				halo_node_read_count.next <== 0;
 				nodes_count.next <== 0;
 				cells_count.next <== 0;
 				edges_count.next <== 0;
@@ -199,6 +212,7 @@ public class ResControlSM extends KernelStateMachine {
 				sizes.edges.next <== edges_in;
 				sizes.nodes.next <== nodes_in;
 				sizes.halo_cells.next <== halo_cells_in;
+				sizes.halo_nodes.next <== halo_nodes_in;
 				sizes.iph_cells.next <== iph_cells_in;
 				sizes.iph_edges.next <== iph_edges_in;
 				sizes.iph_nodes.next <== iph_nodes_in;
@@ -219,9 +233,10 @@ public class ResControlSM extends KernelStateMachine {
 
 
 			} ELSE {
-				IF ((halo_read_delay_count === halo_io_delay) & (halo_read_count < sizes.halo_cells)) {
+				IF ((halo_read_delay_count === halo_io_delay) & (halo_cell_read_count < sizes.halo_cells)) {
 					halo_read_delay_count.next <== 0;
-					halo_read_count.next <== halo_read_count + 1;
+					halo_cell_read_count.next <== halo_cell_read_count + 1;
+					halo_node_read_count.next <== halo_node_read_count + 1;
 				} ELSE {
 					halo_read_delay_count.next <== halo_read_delay_count + 1;
 				}
@@ -260,11 +275,13 @@ public class ResControlSM extends KernelStateMachine {
 	@Override
 		public void outputFunction() {
 			read_sizes <== read_sizes_state;
-			halo_read <== (halo_read_delay_count === halo_io_delay) & ~read_sizes_state;
+			halo_read_cell <== (halo_read_delay_count === halo_io_delay) & halo_cell_read_count < sizes.halo_cells & ~read_sizes_state;
+			halo_read_node <== (halo_read_delay_count === halo_io_delay) & halo_node_read_count < sizes.halo_nodes &~read_sizes_state;
 			read_cell <== (cells_count < sizes.cells) & ~read_sizes_state;
 			read_node <== (nodes_count < sizes.nodes) & ~read_sizes_state;
 			read_edge <== (edges_count < sizes.edges) & ~read_sizes_state;
 			processing <== process_state === ProcessingStates.ENABLED;
 			writing <== write_state === WritingStates.ENABLED;
+			writing_halo <== write_state === WritingStates.ENABLED & write_halo_count < sizes.halo_cells;
 		}
 }

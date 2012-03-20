@@ -13,7 +13,9 @@ public class AirfoilManager extends CustomManager {
 
 
 		KernelBlock resCalc = addKernel(new ResCalcKernel(makeKernelParameters("ResCalcKernel")));
-		Stream in_host = addStreamFromHost("halo_cells");
+		Stream in_host_cell = addStreamFromHost("halo_cells");
+		Stream in_host_node = addStreamFromHost("halo_nodes");
+
 		Stream nodes_dram = addStreamFromOnCardMemory("nodes_from_fram", MemoryAccessPattern.LINEAR_1D);
 		Stream cells_dram = addStreamFromOnCardMemory("cells_from_dram", MemoryAccessPattern.LINEAR_1D);
 		Stream addresses_dram = addStreamFromOnCardMemory("addresses_from_dram", MemoryAccessPattern.LINEAR_1D);
@@ -23,7 +25,9 @@ public class AirfoilManager extends CustomManager {
 		resCalc.getInput("node_input_dram") <== nodes_dram;
 		resCalc.getInput("cell_input_dram") <== cells_dram;
 		resCalc.getInput("addresses") <== addresses_dram;
-		resCalc.getInput("input_host") <== in_host;
+		resCalc.getInput("input_host_cell") <== in_host_cell;
+		resCalc.getInput("input_host_node") <== in_host_node;
+
 		resCalc.getInput("sizes") <== sizes_dram;
 
 		Stream to_host = addStreamToHost("res");

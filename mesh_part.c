@@ -31,7 +31,7 @@
 
 /*This depends on the arithmetic pipeline depth on the FPGA*/
 #define PIPELINE_LATENCY 1
-#define NUM_MICRO_PARTITIONS (100 * PIPELINE_LATENCY)
+#define NUM_MICRO_PARTITIONS (20 * PIPELINE_LATENCY)
 
 #define PRIME 60013
 #define SMALL_PRIME 10007
@@ -207,7 +207,7 @@ void colourGraph(ugraph* graph) {
 uint32_t** toAdjacencyMatrix(ugraph* g) {
   uint32_t** mat = malloc(g->num_nodes * sizeof(*mat));
   for (uint32_t i = 0; i < g->num_nodes; ++i) {
-    mat[i] = malloc(g->num_nodes * sizeof(mat[i]));
+    mat[i] = malloc(g->num_nodes * sizeof(*mat[i]));
   }
   for (uint32_t i = 0; i < g->num_nodes; ++i) {
     for (uint32_t j = 0; j < g->num_nodes; ++j) {
@@ -1031,6 +1031,38 @@ int main(int argc, char* argv[]) {
       addToArr(&globalHaloCellsScheduled, ps[p].haloCellsOrdered.arr[hc]);
     }
   }
+
+
+  printf("Scheduling data arrays\n");
+  float* q_scheduled = malloc(globalCellsScheduled.len * 4 * sizeof(*q_scheduled));
+  float* adt_scheduled = malloc(globalCellsScheduled.len * sizeof(*adt_scheduled));
+  for (uint32_t i = 0; i < globalCellsScheduled.len; ++i) {
+    for (short j = 0; j < 4; ++j) {
+      q_scheduled[4*i+j] = q[4*globalCellsScheduled.arr[i] + j];
+    }
+    adt_scheduled[i] = adt[globalCellsScheduled.arr[i]];
+  }
+  float* x_scheduled = malloc(globalNodesScheduled.len * 2 * sizeof(*x_scheduled));
+  for (uint32_t i = 0; i < globalNodesScheduled.len; ++i) {
+    x_scheduled[2*i] = x[2*globalNodesScheduled.arr[i]];
+    x_scheduled[2*i+1] = x[2*globalNodesScheduled.arr[i]+1];
+  }
+
+  float* halo_q_scheduled = malloc(globalHaloCellsScheduled.len * 4 * sizeof(*halo_q_scheduled));
+  float* halo_adt_scheduled = malloc(globalHaloCellsScheduled.len * sizeof(*halo_q_scheduled));
+  for (uint32_t i = 0; i < globalHaloCellsScheduled.len; ++i) {
+    for (short j = 0; j < 4; ++j) {
+      halo_q_scheduled[4*i+j] = q[4*globalHaloCellsScheduled.arr[i] + j];
+    }
+   halo_adt_scheduled[i] = adt[globalHaloCellsScheduled.arr[i]];
+  }
+  float* halo_x_scheduled = malloc(globalHaloNodesScheduled.len * 2 * sizeof(*halo_x_scheduled));
+  for (uint32_t i = 0; i < globalHaloNodesScheduled.len; ++i) {
+    halo_x_scheduled[2*i] = x[2*globalHaloNodesScheduled.arr[i]];
+    halo_x_scheduled[2*i+1] = x[2*globalHaloNodesScheduled.arr[i]+1];
+  }
+
+
     /*Diagnostic messages, etc...*/
   uint32_t total_halo_cells = 0;
   for (uint32_t i = 0; i < num_parts; ++i) {
