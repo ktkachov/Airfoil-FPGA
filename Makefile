@@ -18,7 +18,7 @@ airfoil: airfoil.cpp
 	./$<
 	cp $@ graphs/
 
-graph: meshColoured.svg
+graph: meshColoured.svg meshSchedule.svg
 
 clean:
 	rm -f mesh

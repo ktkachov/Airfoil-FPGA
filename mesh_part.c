@@ -2,7 +2,7 @@
   Mesh preparation code for the MaxCompiler implementation of Airfoil.
   The idea is to partition the mesh into chunks that will fit in the BRAM
   of the FPGA. Each of those chunks needs to be partitioned in 2, so that
-  we can process one of them while reading in the other, without overlap (double buffering).
+  we can process one of them while reading in the other, without overlap (float buffering).
   Each of those two partitions has to be partitioned into more partitions that will be coloured
   so that any cell that is accessed will not be accessed within the next C number of accesses
   so that the arithmetic pipeline can compute the contribution of that cell to the overall value.
@@ -30,11 +30,6 @@
 #include "metis.h"
 #include "airfoil_utils.h"
 
-double gam;
-double gm1;
-double cfl;
-double eps;
-double qinf[4];
 
 #include "airfoil_kernels.h"
 
@@ -51,6 +46,13 @@ double qinf[4];
 
 #define NOP_EDGE UINT_MAX
 /*colourNames is used to create a DOT file that dumps graphs in a renderable format*/
+
+float gam;
+float gm1;
+float cfl;
+float eps;
+float qinf[4];
+
 const char* colourNames[] = {
   "aqua",
   "olive",
@@ -382,7 +384,7 @@ colour_list* toColourList(ugraph* g) {
   return res;
 }
 
-inline void printarray(double* data, uint32_t len, const char* file_name) {
+inline void printarray(float* data, uint32_t len, const char* file_name) {
   FILE* flog;
   flog = fopen(file_name, "w");
   for (uint32_t i = 0; i < len; ++i) {
@@ -478,6 +480,19 @@ void generateDotGraph(ugraph* g, const char* fileName, partition* ps) {
         }
       }
     }
+  }
+  fprintf(fp, "}");
+  fclose(fp);
+}
+
+void generateScheduleDotGraph(uint32_t* sch, uint32_t s, const char* fileName) {
+  FILE* fp = fopen(fileName, "w");
+  fprintf(fp, "digraph schedule{\n");
+  fprintf(fp, "layout=neato;\n");
+  fprintf(fp, "%d[color=\"red\"];\n", sch[0]);
+  fprintf(fp, "%d -> %d;\n", sch[s-1], sch[0]);
+  for (uint32_t i = 0; i < s-1; ++i) {
+    fprintf(fp, "%d -> %d;\n", sch[i], sch[i+1]);
   }
   fprintf(fp, "}");
   fclose(fp);
@@ -1079,6 +1094,11 @@ int main(int argc, char* argv[]) {
   const char* fileName = "meshColoured.dot";
   printf("Writing partition graph to %s ...\n", fileName);
   generateDotGraph(pg, fileName, ps);
+ 
+   const char* schFileName = "meshSchedule.dot";
+  printf("Writing schedule graph to %s ...\n", schFileName);
+  generateScheduleDotGraph(glPartsSched, num_parts, schFileName);
+
   end = clock();
   printf("Nodes: %u, Edges: %u, Cells: %u, number of partitions: %u\n", nnode, nedge, ncell, num_parts);
   printf("ratio of halo cells to non-halo cells is: %.2f, total halo cells: %d\n", h2nhCells, total_halo_cells);
@@ -1086,7 +1106,7 @@ int main(int argc, char* argv[]) {
   printf("Global scheduled halo nodes:%d, cells:%d\n", globalHaloNodesScheduled.len, globalHaloCellsScheduled.len);
   printf("Created global schedules, total edges = %d\n", schEdges);
   printf("ratio of nop edges to edges %.2f, with %d nop edges\n", (float)num_nop_edges / nedge, num_nop_edges);
-  printf("time taken: %lf seconds\n", (double)(end - start)/CLOCKS_PER_SEC);
+  printf("time taken: %f seconds\n", (float)(end - start)/CLOCKS_PER_SEC);
 
 
   
