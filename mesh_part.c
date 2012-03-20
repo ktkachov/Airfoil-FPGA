@@ -15,6 +15,11 @@
 */
 
 
+#ifdef RUN_FPGA
+#include <MaxCompilerRT.h>
+#define DESIGN_NAME ResCalcSim
+#endif
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -24,6 +29,14 @@
 #include <limits.h>
 #include "metis.h"
 #include "airfoil_utils.h"
+
+double gam;
+double gm1;
+double cfl;
+double eps;
+double qinf[4];
+
+#include "airfoil_kernels.h"
 
 #define CELLS_PER_PARTITION (1<<13)
 #define EDGES_PER_PARTITION (CELLS_PER_PARTITION * 2)
@@ -37,7 +50,6 @@
 #define SMALL_PRIME 10007
 
 #define NOP_EDGE UINT_MAX
-
 /*colourNames is used to create a DOT file that dumps graphs in a renderable format*/
 const char* colourNames[] = {
   "aqua",
@@ -499,7 +511,7 @@ void showGraph(ugraph* g) {
 int main(int argc, char* argv[]) {
 
   uint32_t *becell, *ecell, *bound, *bedge, *edge, *cell;
-  double *x, *q, *qold, *adt, *res;
+  float *x, *q, *qold, *adt, *res;
 
   uint32_t nnode,ncell,nedge,nbedge;
 
@@ -530,7 +542,7 @@ int main(int argc, char* argv[]) {
   adt = malloc( ncell*sizeof(*adt));
 
   for (uint32_t n=0; n<nnode; n++) {
-    if (fscanf(fp,"%lf %lf \n",&x[2*n], &x[2*n+1]) != 2) {
+    if (fscanf(fp,"%f %f \n",&x[2*n], &x[2*n+1]) != 2) {
       printf("error reading from new_grid.dat\n"); exit(-1);
     }
   }
@@ -1032,8 +1044,88 @@ int main(int argc, char* argv[]) {
     }
   }
 
+   /*Diagnostic messages, etc...*/
+  printf("Calculating halo regions\n");
+  uint32_t total_halo_cells = 0;
+  for (uint32_t i = 0; i < num_parts; ++i) {
+    uint32_t total = 0;
+    for (uint32_t j = 0; j < ps[i].nneighbours; ++j) {
+      printf("Halo region %u-%u has %u cells and %d nodes\n", i, ps[i].neighbours[j], ps[i].hrCells[j].len, ps[i].hrNodes[j].len);
+      total += ps[i].hrCells[j].len;
+    }
+    total_halo_cells += total;
+    printf("Total: %u halo cells and %d halo nodes\n", total, ps[i].haloNodes.len);
+    printf("----------------------------------\n");
+  }
 
-  printf("Scheduling data arrays\n");
+
+
+
+
+
+  float h2nhCells = (float)total_halo_cells / (ncell - total_halo_cells);
+  printf("Colouring partition graph...\n");
+  colourGraph(pg);
+  printf("Top level graph of mesh partitions:\n");
+  showGraph(pg);
+  printf("The top-level scheduled partition graph is:\n");
+  for (uint32_t i = 0; i < pg->num_nodes; ++i) {
+    printf("%d, ", glPartsSched[i]);
+  }
+  printf("\n");
+
+  //colour_list* cl_global = toColourList(pg);
+  //printf("Colour list for global partitioning graph:\n");
+  const char* fileName = "meshColoured.dot";
+  printf("Writing partition graph to %s ...\n", fileName);
+  generateDotGraph(pg, fileName, ps);
+  end = clock();
+  printf("Nodes: %u, Edges: %u, Cells: %u, number of partitions: %u\n", nnode, nedge, ncell, num_parts);
+  printf("ratio of halo cells to non-halo cells is: %.2f, total halo cells: %d\n", h2nhCells, total_halo_cells);
+  printf("Global scheduled nodes:%d, cells: %d\n", globalNodesScheduled.len, globalCellsScheduled.len);
+  printf("Global scheduled halo nodes:%d, cells:%d\n", globalHaloNodesScheduled.len, globalHaloCellsScheduled.len);
+  printf("Created global schedules, total edges = %d\n", schEdges);
+  printf("ratio of nop edges to edges %.2f, with %d nop edges\n", (float)num_nop_edges / nedge, num_nop_edges);
+  printf("time taken: %lf seconds\n", (double)(end - start)/CLOCKS_PER_SEC);
+
+
+  
+  gam = 1.4f;
+  gm1 = gam - 1.0f;
+  cfl = 0.9f;
+  eps = 0.05f;
+
+
+  float mach = 0.4f;
+//   float alpha = 3.0f*atan(1.0f)/45.0f;
+  float p = 1.0f;
+  float r = 1.0f;
+  float u = sqrtf(gam*p/r)*mach;
+  float e = p/(r*gm1) + 0.5f*u*u;
+
+  qinf[0] = r;
+  qinf[1] = r*u;
+  qinf[2] = 0.0f;
+  qinf[3] = r*e;
+
+  for (long n=0; n<ncell; n++) {
+    for (long m=0; m<4; m++) {
+        q[4*n+m] = qinf[m];
+      res[4*n+m] = 0.0f;
+      
+    }
+  }
+
+  printf("Running save_soln and adt_calc on host to prepare data arrays...\n");  
+  for (uint32_t i = 0; i < ncell; ++i) {
+    save_soln(&q[4*i], &qold[4*i]);
+  }
+  
+  for (uint32_t i = 0; i < ncell; ++i) {
+    adt_calc(&x[2*cell[4*i]], &x[2*cell[4*i+1]], &x[2*cell[4*i+2]], &x[2*cell[4*i+3]], &q[4*i], &adt[i]);
+  }
+  
+  printf("Scheduling data arrays...\n\n");
   float* q_scheduled = malloc(globalCellsScheduled.len * 4 * sizeof(*q_scheduled));
   float* adt_scheduled = malloc(globalCellsScheduled.len * sizeof(*adt_scheduled));
   for (uint32_t i = 0; i < globalCellsScheduled.len; ++i) {
@@ -1062,43 +1154,21 @@ int main(int argc, char* argv[]) {
     halo_x_scheduled[2*i+1] = x[2*globalHaloNodesScheduled.arr[i]+1];
   }
 
+  #ifdef RUN_FPGA
+  short isSimulation = 1;
+  char* device_name = isSimulation ? "sim:sim0" : "/dev/maxeler0";
+  max_maxfile_t* maxfile;
+  max_device_handle_t* device;
 
-    /*Diagnostic messages, etc...*/
-  uint32_t total_halo_cells = 0;
-  for (uint32_t i = 0; i < num_parts; ++i) {
-    uint32_t total = 0;
-    for (uint32_t j = 0; j < ps[i].nneighbours; ++j) {
-      printf("Halo region %u-%u has %u cells and %d nodes\n", i, ps[i].neighbours[j], ps[i].hrCells[j].len, ps[i].hrNodes[j].len);
-      total += ps[i].hrCells[j].len;
-    }
-    total_halo_cells += total;
-    printf("Total: %u halo cells and %d halo nodes\n", total, ps[i].haloNodes.len);
-    printf("----------------------------------\n");
-  }
+  maxfile = max_maxfile_init_DESIGN_NAME();
+  device = max_open_device(maxfile, device_name);
+  max_set_terminate_on_error(device);
 
-  float h2nhCells = (float)total_halo_cells / (ncell - total_halo_cells);
-  printf("Colouring partition graph...\n");
-  colourGraph(pg);
-  printf("Top level graph of mesh partitions:\n");
-  showGraph(pg);
-  printf("The top-level scheduled partition graph is:\n");
-  for (uint32_t i = 0; i < pg->num_nodes; ++i) {
-    printf("%d, ", glPartsSched[i]);
-  }
-  printf("\n");
 
-  //colour_list* cl_global = toColourList(pg);
-  //printf("Colour list for global partitioning graph:\n");
-  const char* fileName = "meshColoured.dot";
-  printf("Writing partition graph to %s ...\n", fileName);
-  generateDotGraph(pg, fileName, ps);
-  end = clock();
-  printf("Nodes: %u, Edges: %u, Cells: %u, number of partitions: %u\n", nnode, nedge, ncell, num_parts);
-  printf("ratio of halo cells to non-halo cells is: %.2f, total halo cells: %d\n", h2nhCells, total_halo_cells);
-  printf("Global scheduled nodes:%d, cells: %d\n", globalNodesScheduled.len, globalCellsScheduled.len);
-  printf("Global scheduled halo nodes:%d, cells:%d\n", globalHaloNodesScheduled.len, globalHaloCellsScheduled.len);
-  printf("Created global schedules, total edges = %d\n", schEdges);
-  printf("ratio of nop edges to edges %.2f, with %d nop edges\n", (float)num_nop_edges / nedge, num_nop_edges);
-  printf("time taken: %lf seconds\n", (double)(end - start)/CLOCKS_PER_SEC);
+  max_close_device(device);
+  max_destroy(maxfile);
+  #endif 
+
+
   
 }
