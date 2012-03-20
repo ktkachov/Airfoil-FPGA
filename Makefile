@@ -12,13 +12,13 @@ airfoil: airfoil.cpp
 
 %.svg: %.dot
 	./dot2svg $<
-	cp $@ graphs/
+	cp $< graphs/
 
 %.dot: mesh
 	./$<
-	cp $@ graphs/
 
 graph: meshColoured.svg meshSchedule.svg
+	cp $^ graphs/
 
 clean:
 	rm -f mesh
