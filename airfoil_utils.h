@@ -17,8 +17,8 @@ typedef struct array_struct {
 
 /*Helper functions to manipulate arr_t structures*/
 void addToArr(arr_t* a, uint32_t e) {
-  if (a->len == a->maxLen - 1) {
-    a->maxLen += 64;
+  if (a->len >= a->maxLen - 1) {
+    a->maxLen *= 2;
     a->arr = realloc(a->arr, a->maxLen * sizeof(*(a->arr)));
   }
   a->arr[a->len++] = e;
