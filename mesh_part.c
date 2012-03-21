@@ -15,11 +15,6 @@
 */
 
 
-#ifdef RUN_FPGA
-#include <MaxCompilerRT.h>
-#define DESIGN_NAME ResCalcSim
-#endif
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -29,6 +24,11 @@
 #include <limits.h>
 #include "metis.h"
 #include "airfoil_utils.h"
+
+#ifdef RUN_FPGA
+#include <MaxCompilerRT.h>
+#define DESIGN_NAME ResCalcSim
+#endif
 
 
 #include "airfoil_kernels.h"
@@ -1180,12 +1180,16 @@ int main(int argc, char* argv[]) {
   max_maxfile_t* maxfile;
   max_device_handle_t* device;
 
-  maxfile = max_maxfile_init_DESIGN_NAME();
+  printf("Initialising maxfile...\n");
+  maxfile = max_maxfile_init_ResCalc();
+  printf("Opening device %s ... \n", device_name);
   device = max_open_device(maxfile, device_name);
   max_set_terminate_on_error(device);
 
 
+  printf("Closing device %s ... \n", device_name);
   max_close_device(device);
+  printf("Destroying maxfile ... \n");
   max_destroy(maxfile);
   #endif 
 
