@@ -830,17 +830,6 @@ int main(int argc, char* argv[]) {
       ps[i].iparts[k].nodes = *toArr(newNodes);
       destroyHashSet(newNodes);
     }
-/*
-    for (short k = 0; k < 3; ++k) {
-      printf("sub-partition %d of partition %d after common elements removal has %d cells, %d nodes, %d edges\n", 
-              k,
-              i,
-              ps[i].iparts[k].cells.len,
-              ps[i].iparts[k].nodes.len,
-              ps[i].iparts[k].edges.len
-            );
-    }
-*/
 
   }
 
@@ -1176,7 +1165,7 @@ int main(int argc, char* argv[]) {
 
   #ifdef RUN_FPGA
   short isSimulation = 1;
-  char* device_name = isSimulation ? "sim:sim0" : "/dev/maxeler0";
+  char* device_name = isSimulation ? "sim0:sim" : "/dev/maxeler0";
   max_maxfile_t* maxfile;
   max_device_handle_t* device;
 
@@ -1185,7 +1174,9 @@ int main(int argc, char* argv[]) {
   printf("Opening device %s ... \n", device_name);
   device = max_open_device(maxfile, device_name);
   max_set_terminate_on_error(device);
-
+  printf("Setting scalar inputs gm1=%f and eps=%f\n", gm1, eps);
+  max_set_scalar_input_f(device, "ResCalcKernel.gm1", gm1, FPGA_A);
+  max_set_scalar_input_f(device, "ResCalcKernel.eps", eps, FPGA_A);
 
   printf("Closing device %s ... \n", device_name);
   max_close_device(device);

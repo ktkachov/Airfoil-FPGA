@@ -11,6 +11,8 @@ LD = gcc
 mesh: mesh_part.c airfoil_utils.h airfoil_kernels.h 
 	$(CC) -o $@ $(CCFLAGS) $(METIS_INC) $(METIS_LDINC) $< $(LDFLAGS)
 
+
+# The mesh_fpga targets should be compiled on a maxstation
 mesh_fpga.o: mesh_part.c airfoil_utils.h airfoil_kernels.h
 	$(CC) -c -o $@ -DRUN_FPGA $(CCFLAGS) $(MAXCOMPILER_INC) $(METIS_INC) $< 
 
