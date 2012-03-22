@@ -28,10 +28,12 @@ import com.maxeler.maxcompiler.v1.utils.MathUtils;
 
 public class ResCalcKernel extends Kernel {
 
-	private final int max_partition_size = 1<<13 + (1<<13 - 1);
+	private final int max_partition_size = 1<<14;
 	private final int halo_size = max_partition_size / 10;
 	private final int arithmeticPipelineLatency = 6;
 
+	private final int size_width = MathUtils.bitsToAddress(max_partition_size);
+	private final HWType size_width_t = hwUInt(size_width);
 
 	private final KStructType node_struct_t
 		= new KStructType(
@@ -55,11 +57,11 @@ public class ResCalcKernel extends Kernel {
 
 	private final KStructType address_struct_t
 		= new KStructType(
-				KStructType.sft("node1", addr_t),
-				KStructType.sft("node2", addr_t),
-				KStructType.sft("cell1", hwUInt(addr_width + 1)),
-				KStructType.sft("cell2", hwUInt(addr_width + 1)),
-				KStructType.sft("padding", hwUInt(10))
+				KStructType.sft("node1", hwUInt(addr_width)),
+				KStructType.sft("node2", hwUInt(addr_width)),
+				KStructType.sft("cell1", hwUInt(addr_width)),
+				KStructType.sft("cell2", hwUInt(addr_width)),
+				KStructType.sft("padding", hwUInt(8))
 		);
 
 	private final KStructType res_struct_t
@@ -69,25 +71,25 @@ public class ResCalcKernel extends Kernel {
 			);
 
 
-	private final int sizes_padding = 87;
+	private final int sizes_padding = 74;
 	private final KStructType size_struct_t
 		= new KStructType(
-			KStructType.sft("nodes", addr_t),
-			KStructType.sft("cells", addr_t),
-			KStructType.sft("edges", addr_t),
-			KStructType.sft("halo_cells", addr_t),
-			KStructType.sft("halo_nodes", addr_t),
+			KStructType.sft("nodes", size_width_t),
+			KStructType.sft("cells", size_width_t),
+			KStructType.sft("edges", size_width_t),
+			KStructType.sft("halo_cells", size_width_t),
+			KStructType.sft("halo_nodes", size_width_t),
 
-			KStructType.sft("iph_cells", addr_t),
-			KStructType.sft("iph_nodes", addr_t),
+			KStructType.sft("iph_cells", size_width_t),
+			KStructType.sft("iph_nodes", size_width_t),
 
-			KStructType.sft("nhd1_cells", addr_t),
-			KStructType.sft("nhd1_nodes", addr_t),
-			KStructType.sft("nhd1_edges", addr_t),
+			KStructType.sft("nhd1_cells", size_width_t),
+			KStructType.sft("nhd1_nodes", size_width_t),
+			KStructType.sft("nhd1_edges", size_width_t),
 
-			KStructType.sft("nhd2_cells", addr_t),
-			KStructType.sft("nhd2_nodes", addr_t),
-			KStructType.sft("nhd2_edges", addr_t),
+			KStructType.sft("nhd2_cells", size_width_t),
+			KStructType.sft("nhd2_nodes", size_width_t),
+			KStructType.sft("nhd2_edges", size_width_t),
 
 			KStructType.sft("padding", hwUInt(sizes_padding)) //FIXME: REMOVE later!!!
 		);
@@ -102,7 +104,7 @@ public class ResCalcKernel extends Kernel {
 		System.err.println("address_struct type width = " + address_struct_t.getTotalBits());
 
 		HWVar total_count = control.count.simpleCounter(48);
-
+		debug.printf("cycle %d\n", total_count);
 		KStruct sizes = size_struct_t.newInstance(this);
 
 		SMIO control_sm = addStateMachine("io_control_sm", new ResControlSM(this, addr_width, 10));
@@ -124,6 +126,7 @@ public class ResCalcKernel extends Kernel {
 		HWVar read_node = control_sm.getOutput("read_node");
 		HWVar read_edge = control_sm.getOutput("read_edge");
 		HWVar read_sizes = control_sm.getOutput("read_sizes");
+		debug.printf("read_cell:%d, read_node:%d, read_edge:%d, read_sizes:%d\n", read_cell, read_node, read_edge, read_sizes);
 
 		HWVar processing = control_sm.getOutput("processing");
 		HWVar output_data = control_sm.getOutput("writing");
@@ -134,12 +137,14 @@ public class ResCalcKernel extends Kernel {
 
 		KStruct zero_sizes = size_struct_t.newInstance(this);
 		for (String field : size_struct_t.getFieldNames()) {
-			zero_sizes[field] = field.equals("padding") ? hwUInt(sizes_padding).newInstance(this, 0) : addr_t.newInstance(this, 0);
+			zero_sizes[field] = field.equals("padding") ? hwUInt(sizes_padding).newInstance(this, 0) : size_width_t.newInstance(this, 0);
 		}
 
-		KStruct size_input = io.input("sizes", size_struct_t, read_sizes);
-		sizes <== total_count < 6 ? zero_sizes : stream.offset(size_input, -6);
+		KStruct size_input = io.input("sizes", size_struct_t, read_sizes | (total_count === 0));
+//		sizes <== total_count < 6 ? zero_sizes : stream.offset(size_input, -7);
+		sizes <== stream.offset(size_input, -6);
 
+		debug.printf("sizes.nodes=%d\n", sizes["nodes"]);
 
 //		HWVar nhd1Size = io.scalarInput("nhd1Size", addr_t);
 //		HWVar nhd2Size = io.scalarInput("nhd2Size", addr_t);
@@ -408,7 +413,7 @@ public class ResCalcKernel extends Kernel {
 			res_dram_output[i] <== res_ram1_output.getOutputB()[i] + res_ram2_output.getOutputB()[i];
 			res_host_output[i] <== halo_res_ram1_output.getOutputB()[i] + halo_res_ram2_output.getOutputB()[i];
 		}
-
+		debug.printf("----------------------------\n");
 		io.output("result_dram", res_dram_output.getType(), output_data) <== res_dram_output;
 		io.output("result_pcie", res_dram_output.getType(), output_halo) <== res_host_output;
 	}

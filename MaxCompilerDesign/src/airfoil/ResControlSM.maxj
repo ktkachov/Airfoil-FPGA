@@ -27,7 +27,6 @@ public class ResControlSM extends KernelStateMachine {
 		final SMStateValue edges;
 		final SMStateValue iph_cells; // Intra partition halo cells
 		final SMStateValue iph_nodes;
-		final SMStateValue iph_edges;
 		final SMStateValue nhd1_cells;
 		final SMStateValue nhd1_edges;
 		final SMStateValue nhd1_nodes;
@@ -38,7 +37,7 @@ public class ResControlSM extends KernelStateMachine {
 		public Sizes(SMStateValue nodes, SMStateValue cells,
 				SMStateValue halo_cells, SMStateValue halo_nodes,
 				SMStateValue edges, SMStateValue iph_cells,
-				SMStateValue iph_nodes, SMStateValue iph_edges,
+				SMStateValue iph_nodes,
 				SMStateValue nhd1_cells, SMStateValue nhd1_edges,
 				SMStateValue nhd1_nodes, SMStateValue nhd2_cells,
 				SMStateValue nhd2_nodes, SMStateValue nhd2_edges) {
@@ -50,7 +49,6 @@ public class ResControlSM extends KernelStateMachine {
 			this.edges = edges;
 			this.iph_cells = iph_cells;
 			this.iph_nodes = iph_nodes;
-			this.iph_edges = iph_edges;
 			this.nhd1_cells = nhd1_cells;
 			this.nhd1_edges = nhd1_edges;
 			this.nhd1_nodes = nhd1_nodes;
@@ -119,7 +117,7 @@ public class ResControlSM extends KernelStateMachine {
 		halo_cell_read_count 	= state.value(smUInt(width), 0);
 		halo_node_read_count	= state.value(smUInt(width), 0);
 		halo_read_delay_count 	= state.value(smUInt(width), 0);
-		read_sizes_state		= state.value(smBool(), true);
+		read_sizes_state		= state.value(smBool(), false);
 		process_count			= state.value(addr_t, 0);
 		write_count				= state.value(addr_t, 0);
 		write_halo_count		= state.value(addr_t, 0);
@@ -170,7 +168,6 @@ public class ResControlSM extends KernelStateMachine {
 					state.value(addr_t,0),
 					state.value(addr_t,0),
 					state.value(addr_t,0),
-					state.value(addr_t,0),
 					state.value(addr_t,0)
 				);
 
@@ -192,6 +189,7 @@ public class ResControlSM extends KernelStateMachine {
 		public void nextState() {
 			SMValue finishedPartition = finishedPartition();
 			read_sizes_state.next <== finishedPartition;
+			debug.printf("SM nodes_count: %d\n", nodes_count);
 			IF (read_sizes_state) {
 				halo_cell_read_count.next <== 0;
 				halo_read_delay_count.next <== 0;

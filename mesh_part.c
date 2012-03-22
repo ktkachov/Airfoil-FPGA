@@ -44,7 +44,7 @@
 #define PRIME 60013
 #define SMALL_PRIME 10007
 
-#define ADDR_T 13
+#define ADDR_T 14
 
 #define NOP_EDGE UINT_MAX
 /*colourNames is used to create a DOT file that dumps graphs in a renderable format*/
@@ -102,15 +102,15 @@ typedef struct size_vector_struct {
   uint32_t nhd2_edges : ADDR_T;
   uint32_t padding0;
   uint32_t padding1;
-  uint32_t padding2 : 23;
+  uint32_t padding2 : 3;
 } __attribute__((packed)) size_vector_t;
 
 typedef struct edge_address_struct {
   uint32_t node1 : ADDR_T;
   uint32_t node2 : ADDR_T;
-  uint32_t cell1 : 14;
-  uint32_t cell2 : 14;
-  uint32_t padding : 10;
+  uint32_t cell1 : ADDR_T;
+  uint32_t cell2 : ADDR_T;
+  uint32_t padding : 8;
 } __attribute__((packed)) edge_struct;
 
 typedef struct cell_struct_t {
@@ -566,7 +566,6 @@ int main(int argc, char* argv[]) {
 
   uint32_t nnode,ncell,nedge,nbedge;
 
- 
   /* read in grid */
 
   printf("reading in grid \n");
@@ -1232,6 +1231,11 @@ int main(int argc, char* argv[]) {
   posix_memalign((void**)&res_non_halo, 16, globalCellsScheduled.len * sizeof(*res_non_halo));
 // = malloc(globalHaloCellsScheduled.len * sizeof(*res_non_halo));
 
+  printf("Size vectors are:\n");
+  for (uint32_t i = 0; i < num_parts; ++i) {
+    showSizeVector(&size_vectors[i]);
+  }
+
   #ifdef RUN_FPGA
   short isSimulation = 1;
   char* device_name = isSimulation ? "sim0:sim" : "/dev/maxeler0";
@@ -1252,6 +1256,10 @@ int main(int argc, char* argv[]) {
   printf("sizeof(float) = %ld\n", sizeof(float));
   printf("sizeof(size vector) = %ld\n", sizeof(*size_vectors));
 
+  uint32_t kernel_cycles = size_vectors[0].nhd1_nodes + total_edges;
+
+  printf("Running FPGA for %d cycles...\n", kernel_cycles);
+
   max_run(device,
           max_input("nodes_from_dram", nodes_scheduled, globalNodesScheduled.len * sizeof(*nodes_scheduled)),
           max_input("cells_from_dram", cells_scheduled, globalCellsScheduled.len * sizeof(*cells_scheduled)),
@@ -1261,7 +1269,7 @@ int main(int argc, char* argv[]) {
           max_input("sizes", size_vectors, num_parts * sizeof(*size_vectors)),
           max_output("to_dram", res_non_halo, globalCellsScheduled.len * sizeof(*res_non_halo)),
           max_output("res", res_halo, globalHaloCellsScheduled.len * sizeof(*res_halo)),
-          max_runfor("ResCalcKernel", max(nnode, ncell)),
+          max_runfor("ResCalcKernel", kernel_cycles),
           max_end()
          );  
 
