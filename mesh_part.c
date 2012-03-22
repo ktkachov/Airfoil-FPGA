@@ -14,7 +14,7 @@
   @author: Kyrylo Tkachov (kt208@imperial.ac.uk)
 */
 
-
+#define _XOPEN_SOURCE 600 
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -43,6 +43,8 @@
 
 #define PRIME 60013
 #define SMALL_PRIME 10007
+
+#define ADDR_T 13
 
 #define NOP_EDGE UINT_MAX
 /*colourNames is used to create a DOT file that dumps graphs in a renderable format*/
@@ -85,16 +87,50 @@ typedef struct colour_list_struct {
 } colour_list;
 
 typedef struct size_vector_struct {
-  uint32_t nodes, cells, edges, halo_cells, halo_nodes;
-  uint32_t iph_cells, iph_nodes;
-  uint32_t nhd1_cells, nhd1_nodes, nhd1_edges;
-  uint32_t nhd2_cells, nhd2_nodes, nhd2_edges;
-} size_vector_t;
+  uint32_t nodes : ADDR_T;
+  uint32_t cells : ADDR_T;
+  uint32_t edges : ADDR_T;
+  uint32_t halo_cells : ADDR_T;
+  uint32_t halo_nodes : ADDR_T;
+  uint32_t iph_cells : ADDR_T;
+  uint32_t iph_nodes : ADDR_T;
+  uint32_t nhd1_cells : ADDR_T;
+  uint32_t nhd1_nodes : ADDR_T;
+  uint32_t nhd1_edges : ADDR_T;
+  uint32_t nhd2_cells : ADDR_T;
+  uint32_t nhd2_nodes : ADDR_T;
+  uint32_t nhd2_edges : ADDR_T;
+  uint32_t padding0;
+  uint32_t padding1;
+  uint32_t padding2 : 23;
+} __attribute__((packed)) size_vector_t;
 
 typedef struct edge_address_struct {
-  uint32_t node[2];
-  uint32_t cell[2];
-} edge_struct;
+  uint32_t node1 : ADDR_T;
+  uint32_t node2 : ADDR_T;
+  uint32_t cell1 : 14;
+  uint32_t cell2 : 14;
+  uint32_t padding : 10;
+} __attribute__((packed)) edge_struct;
+
+typedef struct cell_struct_t {
+  float q0;
+  float q1;
+  float q2;
+  float q3;
+  float adt;
+  uint32_t padding[3];
+} __attribute__((packed))cell_struct;
+
+typedef struct node_struct_t {
+  float x[2];
+  uint32_t padding[2];
+} __attribute__((packed)) node_struct;
+
+typedef struct res_struct_t {
+  float res1[4];
+  float res2[4];
+} __attribute__((packed)) res_struct;
 
 typedef struct internal_partition_struct {
   arr_t cells;
@@ -964,10 +1000,10 @@ int main(int argc, char* argv[]) {
       ps[i].iparts[p].edgeStructsOrdered = malloc(ps[i].iparts[p].edgesOrdered.len * sizeof(*ps[i].iparts[p].edgeStructsOrdered));
       for (uint32_t e = 0; e < ps[i].iparts[p].edgesOrdered.len; ++e) {
         if (ps[i].iparts[p].edgesOrdered.arr[e] == NOP_EDGE) {
-          ps[i].iparts[p].edgeStructsOrdered[e].node[0] = 0;
-          ps[i].iparts[p].edgeStructsOrdered[e].node[1] = 0;
-          ps[i].iparts[p].edgeStructsOrdered[e].cell[0] = 0;
-          ps[i].iparts[p].edgeStructsOrdered[e].cell[1] = 0;
+          ps[i].iparts[p].edgeStructsOrdered[e].node1 = 0;
+          ps[i].iparts[p].edgeStructsOrdered[e].node2 = 0;
+          ps[i].iparts[p].edgeStructsOrdered[e].cell1 = 0;
+          ps[i].iparts[p].edgeStructsOrdered[e].cell2 = 0;
         } else {
           uint32_t ed = ps[i].iparts[p].edgesOrdered.arr[e];
           uint32_t node_g[2]; /*Globally numbered nodes*/
@@ -976,10 +1012,12 @@ int main(int argc, char* argv[]) {
           node_g[1] = edge[2*ed+1];
           cell_g[0] = ecell[2*ed];
           cell_g[1] = ecell[2*ed+1];
-          for (short ii = 0; ii < 2; ++ii) {
-            ps[i].iparts[p].edgeStructsOrdered[e].node[ii] = getValue(ps[i].nodeAddressMap, node_g[ii]);
-            ps[i].iparts[p].edgeStructsOrdered[e].cell[ii] = getValue(ps[i].cellAddressMap, cell_g[ii]);
-          }
+          ps[i].iparts[p].edgeStructsOrdered[e].node1 = getValue(ps[i].nodeAddressMap, node_g[0]);
+          ps[i].iparts[p].edgeStructsOrdered[e].cell1 = getValue(ps[i].cellAddressMap, cell_g[0]);
+          ps[i].iparts[p].edgeStructsOrdered[e].node2 = getValue(ps[i].nodeAddressMap, node_g[1]);
+          ps[i].iparts[p].edgeStructsOrdered[e].cell2 = getValue(ps[i].cellAddressMap, cell_g[1]);
+
+
         }
         /*
         edge_struct* estr = &ps[i].iparts[p].edgeStructsOrdered[e];
@@ -1003,10 +1041,17 @@ int main(int argc, char* argv[]) {
   initArr(&globalHaloNodesScheduled, num_parts * NODES_PER_PARTITION / 20);
   initArr(&globalHaloCellsScheduled, num_parts * CELLS_PER_PARTITION / 20);
 
-  size_vector_t* size_vectors = malloc(num_parts * sizeof(*size_vectors));
+  size_vector_t* size_vectors;
+  posix_memalign((void**)&size_vectors, 16, num_parts * sizeof(*size_vectors));
+// = malloc(num_parts * sizeof(*size_vectors));
 
-  edge_struct* globalEdgeStructsScheduled = malloc((nedge + num_nop_edges) * sizeof(*globalEdgeStructsScheduled));
-  uint32_t* globalEdgesScheduled = malloc((nedge + num_nop_edges) * sizeof(*globalEdgesScheduled));
+
+  uint32_t total_edges = nedge + num_nop_edges;
+
+  edge_struct* globalEdgeStructsScheduled;
+  posix_memalign((void**)&globalEdgeStructsScheduled, 16, total_edges * sizeof(*globalEdgeStructsScheduled));
+// = malloc(total_edges * sizeof(*globalEdgeStructsScheduled));
+  uint32_t* globalEdgesScheduled = malloc(total_edges * sizeof(*globalEdgesScheduled));
   uint32_t schEdges = 0;
   for (uint32_t i = 0; i < num_parts; ++i) {
     uint32_t p = glPartsSched[i];
@@ -1024,6 +1069,7 @@ int main(int argc, char* argv[]) {
     size_vectors[p].nhd2_nodes = ps[p].iparts[1].nodes.len;
     size_vectors[p].nhd2_cells = ps[p].iparts[1].cells.len;
     size_vectors[p].nhd2_edges = ps[p].iparts[1].edgesOrdered.len;
+    //size_vectors[p].padding = 0;
     /*showSizeVector(&size_vectors[p]);*/
     for (uint32_t n = 0; n < ps[p].nodesOrdered.len; ++n) {
       addToArr(&globalNodesScheduled, ps[p].nodesOrdered.arr[n]);
@@ -1135,33 +1181,56 @@ int main(int argc, char* argv[]) {
   }
   
   printf("Scheduling data arrays...\n\n");
-  float* q_scheduled = malloc(globalCellsScheduled.len * 4 * sizeof(*q_scheduled));
-  float* adt_scheduled = malloc(globalCellsScheduled.len * sizeof(*adt_scheduled));
+  cell_struct* cells_scheduled;
+  posix_memalign((void**)&cells_scheduled, 16, globalCellsScheduled.len * sizeof(*cells_scheduled));
   for (uint32_t i = 0; i < globalCellsScheduled.len; ++i) {
-    for (short j = 0; j < 4; ++j) {
-      q_scheduled[4*i+j] = q[4*globalCellsScheduled.arr[i] + j];
-    }
-    adt_scheduled[i] = adt[globalCellsScheduled.arr[i]];
+    cells_scheduled[i].q0 = q[4*globalCellsScheduled.arr[i] ];
+    cells_scheduled[i].q1 = q[4*globalCellsScheduled.arr[i] + 1];
+    cells_scheduled[i].q2 = q[4*globalCellsScheduled.arr[i] + 2];
+    cells_scheduled[i].q3 = q[4*globalCellsScheduled.arr[i] + 3];
+
+    cells_scheduled[i].adt = adt[globalCellsScheduled.arr[i]];
+//    cells_scheduled[i].padding = 0;
   }
-  float* x_scheduled = malloc(globalNodesScheduled.len * 2 * sizeof(*x_scheduled));
+  float* x_scheduled;
+  node_struct* nodes_scheduled;
+  posix_memalign((void**)&nodes_scheduled, 16, globalNodesScheduled.len * sizeof(*nodes_scheduled));
+  posix_memalign((void**)&x_scheduled, 16, globalNodesScheduled.len * 2 * sizeof(*x_scheduled));
   for (uint32_t i = 0; i < globalNodesScheduled.len; ++i) {
+    nodes_scheduled[i].x[0] = x[2*globalNodesScheduled.arr[i]];
+    nodes_scheduled[i].x[1] = x[2*globalNodesScheduled.arr[i] + 1];
     x_scheduled[2*i] = x[2*globalNodesScheduled.arr[i]];
     x_scheduled[2*i+1] = x[2*globalNodesScheduled.arr[i]+1];
   }
 
-  float* halo_q_scheduled = malloc(globalHaloCellsScheduled.len * 4 * sizeof(*halo_q_scheduled));
-  float* halo_adt_scheduled = malloc(globalHaloCellsScheduled.len * sizeof(*halo_q_scheduled));
+  cell_struct* halo_cells_scheduled;
+  posix_memalign((void**)&halo_cells_scheduled, 16, globalHaloCellsScheduled.len * sizeof(*halo_cells_scheduled));
   for (uint32_t i = 0; i < globalHaloCellsScheduled.len; ++i) {
-    for (short j = 0; j < 4; ++j) {
-      halo_q_scheduled[4*i+j] = q[4*globalHaloCellsScheduled.arr[i] + j];
-    }
-   halo_adt_scheduled[i] = adt[globalHaloCellsScheduled.arr[i]];
+    halo_cells_scheduled[i].q0 = q[4*globalHaloCellsScheduled.arr[i]];
+    halo_cells_scheduled[i].q1 = q[4*globalHaloCellsScheduled.arr[i] + 1];
+    halo_cells_scheduled[i].q2 = q[4*globalHaloCellsScheduled.arr[i] + 2];
+    halo_cells_scheduled[i].q3 = q[4*globalHaloCellsScheduled.arr[i] + 3];
+
+   halo_cells_scheduled[i].adt = adt[globalHaloCellsScheduled.arr[i]];
   }
-  float* halo_x_scheduled = malloc(globalHaloNodesScheduled.len * 2 * sizeof(*halo_x_scheduled));
+  float* halo_x_scheduled;
+  node_struct* halo_nodes_scheduled;
+  posix_memalign((void**)&halo_nodes_scheduled, 16, globalHaloNodesScheduled.len * sizeof(*halo_nodes_scheduled));
+  posix_memalign((void**)&halo_x_scheduled, 16, globalHaloNodesScheduled.len * 2 * sizeof(*halo_x_scheduled));
   for (uint32_t i = 0; i < globalHaloNodesScheduled.len; ++i) {
+    halo_nodes_scheduled[i].x[0] = x[2*globalHaloNodesScheduled.arr[i]];
+    halo_nodes_scheduled[i].x[1] = x[2*globalHaloNodesScheduled.arr[i]+1];
     halo_x_scheduled[2*i] = x[2*globalHaloNodesScheduled.arr[i]];
     halo_x_scheduled[2*i+1] = x[2*globalHaloNodesScheduled.arr[i]+1];
   }
+
+  /*Allocate memory for results*/
+  res_struct* res_halo;
+  posix_memalign((void**)&res_halo, 16, globalHaloCellsScheduled.len * sizeof(*res_halo));
+ //= malloc(globalHaloCellsScheduled.len * sizeof(*res_halo));
+  res_struct* res_non_halo;
+  posix_memalign((void**)&res_non_halo, 16, globalCellsScheduled.len * sizeof(*res_non_halo));
+// = malloc(globalHaloCellsScheduled.len * sizeof(*res_non_halo));
 
   #ifdef RUN_FPGA
   short isSimulation = 1;
@@ -1177,6 +1246,24 @@ int main(int argc, char* argv[]) {
   printf("Setting scalar inputs gm1=%f and eps=%f\n", gm1, eps);
   max_set_scalar_input_f(device, "ResCalcKernel.gm1", gm1, FPGA_A);
   max_set_scalar_input_f(device, "ResCalcKernel.eps", eps, FPGA_A);
+
+  printf("globalCellsScheduled.len=%d, * sizeof(*cells_scheduled)=%ld, sizeof=%ld\n", globalCellsScheduled.len, globalCellsScheduled.len * sizeof(*cells_scheduled), sizeof(*cells_scheduled));
+  printf("sizeof(*nodes_scheduled) = %ld\n", sizeof(*nodes_scheduled));
+  printf("sizeof(float) = %ld\n", sizeof(float));
+  printf("sizeof(size vector) = %ld\n", sizeof(*size_vectors));
+
+  max_run(device,
+          max_input("nodes_from_dram", nodes_scheduled, globalNodesScheduled.len * sizeof(*nodes_scheduled)),
+          max_input("cells_from_dram", cells_scheduled, globalCellsScheduled.len * sizeof(*cells_scheduled)),
+          max_input("addresses_from_dram", globalEdgeStructsScheduled, total_edges * sizeof(*globalEdgeStructsScheduled)),
+          max_input("halo_cells", halo_cells_scheduled, globalHaloCellsScheduled.len * sizeof(*halo_cells_scheduled)),
+          max_input("halo_nodes", halo_nodes_scheduled, globalHaloNodesScheduled.len * sizeof(*halo_nodes_scheduled)),
+          max_input("sizes", size_vectors, num_parts * sizeof(*size_vectors)),
+          max_output("to_dram", res_non_halo, globalCellsScheduled.len * sizeof(*res_non_halo)),
+          max_output("res", res_halo, globalHaloCellsScheduled.len * sizeof(*res_halo)),
+          max_runfor("ResCalcKernel", max(nnode, ncell)),
+          max_end()
+         );  
 
   printf("Closing device %s ... \n", device_name);
   max_close_device(device);

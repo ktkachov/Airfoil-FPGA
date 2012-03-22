@@ -35,14 +35,16 @@ public class ResCalcKernel extends Kernel {
 
 	private final KStructType node_struct_t
 		= new KStructType(
-				KStructType.sft("x", array2_t)
+				KStructType.sft("x", array2_t),
+				KStructType.sft("padding", hwUInt(64))
 			);
 
+	private final int cell_padding = 96;
 	private final KStructType cell_struct_t
 		= new KStructType(
 				KStructType.sft("q", array4_t),
 				KStructType.sft("adt", arith_t),
-				KStructType.sft("padding", hwUInt(96))
+				KStructType.sft("padding", hwUInt(cell_padding))
 		);
 
 	final int addr_width = MathUtils.bitsToAddress(max_partition_size);
@@ -66,6 +68,8 @@ public class ResCalcKernel extends Kernel {
 				KStructType.sft("res2", array4_t)
 			);
 
+
+	private final int sizes_padding = 87;
 	private final KStructType size_struct_t
 		= new KStructType(
 			KStructType.sft("nodes", addr_t),
@@ -76,7 +80,6 @@ public class ResCalcKernel extends Kernel {
 
 			KStructType.sft("iph_cells", addr_t),
 			KStructType.sft("iph_nodes", addr_t),
-			KStructType.sft("iph_edges", addr_t),
 
 			KStructType.sft("nhd1_cells", addr_t),
 			KStructType.sft("nhd1_nodes", addr_t),
@@ -86,12 +89,17 @@ public class ResCalcKernel extends Kernel {
 			KStructType.sft("nhd2_nodes", addr_t),
 			KStructType.sft("nhd2_edges", addr_t),
 
-			KStructType.sft("padding", hwUInt(74)) //FIXME: REMOVE later!!!
+			KStructType.sft("padding", hwUInt(sizes_padding)) //FIXME: REMOVE later!!!
 		);
 
 
 	public ResCalcKernel(KernelParameters params) {
 		super(params);
+
+		System.err.println("addr_t width = " + addr_t);
+		System.err.println("cell_struct width = " + cell_struct_t.getTotalBits());
+		System.err.println("size_struct width = " + size_struct_t.getTotalBits());
+		System.err.println("address_struct type width = " + address_struct_t.getTotalBits());
 
 		HWVar total_count = control.count.simpleCounter(48);
 
@@ -111,7 +119,6 @@ public class ResCalcKernel extends Kernel {
 		control_sm.connectInput("nhd2_edges", (HWVar) sizes.get("nhd2_edges"));
 		control_sm.connectInput("iph_cells", (HWVar) sizes.get("iph_cells"));
 		control_sm.connectInput("iph_nodes", (HWVar) sizes.get("iph_nodes"));
-		control_sm.connectInput("iph_edges", (HWVar) sizes.get("iph_edges"));
 
 		HWVar read_cell = control_sm.getOutput("read_cell");
 		HWVar read_node = control_sm.getOutput("read_node");
@@ -127,7 +134,7 @@ public class ResCalcKernel extends Kernel {
 
 		KStruct zero_sizes = size_struct_t.newInstance(this);
 		for (String field : size_struct_t.getFieldNames()) {
-			zero_sizes[field] = field.equals("padding") ? hwUInt(74).newInstance(this, 0) : addr_t.newInstance(this, 0);
+			zero_sizes[field] = field.equals("padding") ? hwUInt(sizes_padding).newInstance(this, 0) : addr_t.newInstance(this, 0);
 		}
 
 		KStruct size_input = io.input("sizes", size_struct_t, read_sizes);
@@ -176,32 +183,60 @@ public class ResCalcKernel extends Kernel {
 		node2_addr = isNode2Halo ? node2_addr - (HWVar)sizes["nodes"] : node2_addr;
 
 
-		HWVar read_halo_ram = isCell1Halo | isCell2Halo;
-		HWVar halo_ram_addr = (read_halo_ram ? (isCell1Halo ? cell1_addr : cell2_addr) : 0).cast(halo_addr_t);
-
 		//RAMs for halo data
-		Mem.RamPortParams<KStruct> halo_cell_portA_params
+
+
+		HWVar halo_cell_ram1_addr = (isCell1Halo ? cell1_addr : 0).cast(halo_addr_t);
+		Mem.RamPortParams<KStruct> halo_cell_ram1_portA_params
 			= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_write_count, cell_struct_t)
 				.withDataIn(cell_data_host)
 				.withWriteEnable(read_host_halo_cell)
 				;
 
-		Mem.RamPortParams<KStruct> halo_cell_portB_params
-			= mem.makeRamPortParams(RamPortMode.READ_ONLY, halo_ram_addr, cell_struct_t);
+		Mem.RamPortParams<KStruct> halo_cell_ram1_portB_params
+			= mem.makeRamPortParams(RamPortMode.READ_ONLY, halo_cell_ram1_addr, cell_struct_t);
 
-		Mem.DualPortMemOutputs<KStruct> halo_cell_ram_output = mem.ramDualPort(halo_size, RamWriteMode.READ_FIRST, halo_cell_portA_params, halo_cell_portB_params);
+		Mem.DualPortMemOutputs<KStruct> halo_cell_ram1_output = mem.ramDualPort(halo_size, RamWriteMode.READ_FIRST, halo_cell_ram1_portA_params, halo_cell_ram1_portB_params);
 
 
-		Mem.RamPortParams<KStruct> halo_node_portA_params
+		HWVar halo_cell_ram2_addr = (isCell2Halo ? cell2_addr : 0).cast(halo_addr_t);
+		Mem.RamPortParams<KStruct> halo_cell_ram2_portA_params
+		= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_write_count, cell_struct_t)
+			.withDataIn(cell_data_host)
+			.withWriteEnable(read_host_halo_cell)
+			;
+
+		Mem.RamPortParams<KStruct> halo_cell_ram2_portB_params
+			= mem.makeRamPortParams(RamPortMode.READ_ONLY, halo_cell_ram2_addr, cell_struct_t);
+
+		Mem.DualPortMemOutputs<KStruct> halo_cell_ram2_output = mem.ramDualPort(halo_size, RamWriteMode.READ_FIRST, halo_cell_ram2_portA_params, halo_cell_ram2_portB_params);
+
+
+
+		HWVar halo_node_ram1_addr = (isNode1Halo ? node1_addr : 0).cast(halo_addr_t);
+		Mem.RamPortParams<KStruct> halo_node_ram1_portA_params
 		= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_write_count, node_data_host.getType())
 			.withDataIn(node_data_host)
 			.withWriteEnable(read_host_halo_node)
 			;
 
-		Mem.RamPortParams<KStruct> halo_node_portB_params
-			= mem.makeRamPortParams(RamPortMode.READ_ONLY, halo_ram_addr, node_data_host.getType());
+		Mem.RamPortParams<KStruct> halo_node_ram1_portB_params
+			= mem.makeRamPortParams(RamPortMode.READ_ONLY, halo_node_ram1_addr, node_data_host.getType());
 
-		Mem.DualPortMemOutputs<KStruct> halo_node_ram_output = mem.ramDualPort(halo_size, RamWriteMode.READ_FIRST, halo_node_portA_params, halo_node_portB_params);
+		Mem.DualPortMemOutputs<KStruct> halo_node_ram1_output = mem.ramDualPort(halo_size, RamWriteMode.READ_FIRST, halo_node_ram1_portA_params, halo_node_ram1_portB_params);
+
+
+		HWVar halo_node_ram2_addr = (isNode2Halo ? node2_addr : 0).cast(halo_addr_t);
+		Mem.RamPortParams<KStruct> halo_node_ram2_portA_params
+		= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_write_count, node_data_host.getType())
+			.withDataIn(node_data_host)
+			.withWriteEnable(read_host_halo_node)
+			;
+
+		Mem.RamPortParams<KStruct> halo_node_ram2_portB_params
+			= mem.makeRamPortParams(RamPortMode.READ_ONLY, halo_node_ram2_addr, node_data_host.getType());
+
+		Mem.DualPortMemOutputs<KStruct> halo_node_ram2_output = mem.ramDualPort(halo_size, RamWriteMode.READ_FIRST, halo_node_ram2_portA_params, halo_node_ram2_portB_params);
 
 
 
@@ -240,10 +275,10 @@ public class ResCalcKernel extends Kernel {
 			= mem.ramDualPort(max_partition_size, RamWriteMode.WRITE_FIRST, cell_ram_portA_params, cell_ram2_portB_params);
 
 
-		KStruct cell1 = isCell1Halo ? halo_cell_ram_output.getOutputB() : cell_ram1_output.getOutputB();
-		KStruct cell2 = isCell2Halo ? halo_cell_ram_output.getOutputB() : cell_ram2_output.getOutputB();
-		KStruct node1 = isNode1Halo ? halo_node_ram_output.getOutputB() : node_ram1_output.getOutputB();
-		KStruct node2 = isNode2Halo ? halo_node_ram_output.getOutputB() : node_ram2_output.getOutputB();
+		KStruct cell1 = isCell1Halo ? halo_cell_ram1_output.getOutputB() : cell_ram1_output.getOutputB();
+		KStruct cell2 = isCell2Halo ? halo_cell_ram2_output.getOutputB() : cell_ram2_output.getOutputB();
+		KStruct node1 = isNode1Halo ? halo_node_ram1_output.getOutputB() : node_ram1_output.getOutputB();
+		KStruct node2 = isNode2Halo ? halo_node_ram2_output.getOutputB() : node_ram2_output.getOutputB();
 
 		cell1 = isNoopEdge ? cell1 : noOpCell();
 		cell2 = isNoopEdge ? cell2 : noOpCell();
@@ -291,8 +326,8 @@ public class ResCalcKernel extends Kernel {
 		KArray<HWVar> halo_res_ram2_input = isCell2Halo ? new_res_value_cell2 : zeroes;
 
 		Mem.RamPortParams<KArray<HWVar>> halo_res_ram1_portA_params
-			= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_ram_addr, array4_t)
-				.withWriteEnable(processing & read_halo_ram)
+			= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_cell_ram1_addr, array4_t)
+				.withWriteEnable(processing & isCell1Halo)
 				.withDataIn(halo_res_ram1_input)
 				;
 
@@ -308,8 +343,8 @@ public class ResCalcKernel extends Kernel {
 
 
 		Mem.RamPortParams<KArray<HWVar>> halo_res_ram2_portA_params
-		= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_ram_addr, array4_t)
-			.withWriteEnable(processing & read_halo_ram)
+		= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_cell_ram2_addr, array4_t)
+			.withWriteEnable(processing & isCell2Halo)
 			.withDataIn(halo_res_ram2_input)
 			;
 
@@ -432,6 +467,8 @@ public class ResCalcKernel extends Kernel {
 		}
 		KArray<HWVar> n = res["x"];
 		n <== x;
+		HWVar r_pad = res["padding"];
+		r_pad <== r_pad.getType().newInstance(this, 0);
 		return res;
 	}
 

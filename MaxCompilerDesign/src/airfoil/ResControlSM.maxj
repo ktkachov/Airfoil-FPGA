@@ -100,7 +100,6 @@ public class ResControlSM extends KernelStateMachine {
 	private final SMInput edges_in;
 	private final SMInput iph_cells_in; // Intra partition halo cells
 	private final SMInput iph_nodes_in;
-	private final SMInput iph_edges_in;
 	private final SMInput nhd1_cells_in;
 	private final SMInput nhd1_edges_in;
 	private final SMInput nhd1_nodes_in;
@@ -143,7 +142,6 @@ public class ResControlSM extends KernelStateMachine {
 
 		iph_cells_in	= io.input("iph_cells", addr_t);
 		iph_nodes_in	= io.input("iph_nodes", addr_t);
-		iph_edges_in	= io.input("iph_edges", addr_t);
 
 		nhd2_cells_in	= io.input("nhd2_cells", addr_t);
 		nhd2_edges_in	= io.input("nhd2_edges", addr_t);
@@ -214,7 +212,6 @@ public class ResControlSM extends KernelStateMachine {
 				sizes.halo_cells.next <== halo_cells_in;
 				sizes.halo_nodes.next <== halo_nodes_in;
 				sizes.iph_cells.next <== iph_cells_in;
-				sizes.iph_edges.next <== iph_edges_in;
 				sizes.iph_nodes.next <== iph_nodes_in;
 				sizes.nhd1_cells.next <== nhd1_cells_in;
 				sizes.nhd1_edges.next <== nhd1_edges_in;
