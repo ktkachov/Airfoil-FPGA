@@ -28,18 +28,19 @@
 #ifdef RUN_FPGA
 #include <MaxCompilerRT.h>
 #define DESIGN_NAME ResCalcSim
+max_maxfile_t* max_maxfile_init_ResCalc();
 #endif
 
-
 #include "airfoil_kernels.h"
+
 
 #define CELLS_PER_PARTITION (1<<13)
 #define EDGES_PER_PARTITION (CELLS_PER_PARTITION * 2)
 #define NODES_PER_PARTITION (CELLS_PER_PARTITION)
 
 /*This depends on the arithmetic pipeline depth on the FPGA*/
-#define PIPELINE_LATENCY 1
-#define NUM_MICRO_PARTITIONS (20 * PIPELINE_LATENCY)
+#define PIPELINE_LATENCY 5
+#define NUM_MICRO_PARTITIONS (27 * PIPELINE_LATENCY)
 
 #define PRIME 60013
 #define SMALL_PRIME 10007
@@ -138,6 +139,7 @@ typedef struct internal_partition_struct {
   arr_t nodes;
   ugraph* cg; /*Connectivity graph for internal partitions*/
   uint32_t* partitionsOrdered;
+  uint32_t num_micro_partitions;
   arr_t edgesOrdered;
   uint32_t nop_edges;
 
@@ -313,23 +315,38 @@ int validPos(uint32_t* arr, uint32_t node, uint32_t nnodes, uint32_t count, uint
   return 1;
 }
 
-int sched(uint32_t n, uint32_t* res, uint32_t* count, short* elems, uint32_t** mat,  uint32_t nnodes, uint32_t interval) {
+int sched(uint32_t n, uint32_t* res, uint32_t* count, short* elems, uint32_t** mat, uint32_t* as, uint32_t nnodes, uint32_t interval) {
   res[(*count)++] = n;
   if ((*count) == nnodes) {
     return 1;
   }
   elems[n] = 1;
+  ollist* children = createOrdLinkedList();
   for (uint32_t i = 0; i < nnodes; ++i) {
     if (!elems[i] && !mat[n][i] && validPos(res, i, nnodes, *count, mat, interval)) {
-      if (sched(i, res, count, elems, mat, nnodes, interval)) {
-        return 1;
-      }
+      insert_ollist(children, nnodes - as[i], i);
     }
   }
  // printf("returning 0 with n = %d, count=%d\n", n, *count);
-  --(*count);
-  elems[n] = 0;
-  return 0;
+  if (ollist_isEmpty(children)) {
+    --(*count);
+    elems[n] = 0;
+    destroy_ollist(children);
+    return 0;
+  } else {
+    struct entry* e = children->head;
+    while (e != NULL) {
+      if (sched(e->v, res, count, elems, mat, as, nnodes, interval)) {
+        destroy_ollist(children);
+        return 1;
+      }
+      e = e->next;
+    }
+    --(*count);
+    elems[n] = 0;
+    destroy_ollist(children);
+    return 0;
+  }
 }
 
 uint32_t* scheduleGraph2(ugraph* g, uint32_t interval) {
@@ -337,13 +354,21 @@ uint32_t* scheduleGraph2(ugraph* g, uint32_t interval) {
   uint32_t count = 0;
   short* elems = calloc(g->num_nodes, sizeof(*elems));
   uint32_t** mat = toAdjacencyMatrix(g);
+  ollist* children = createOrdLinkedList();
   for (uint32_t i = 0; i < g->num_nodes; ++i) {
-    if (sched(i, res, &count, elems, mat,  g->num_nodes, interval)) {
+    insert_ollist(children, g->num_nodes - g->adj_sizes[i], i);
+  }
+  struct entry* e = children->head;
+  while (e != NULL) {
+    if (sched(e->v, res, &count, elems, mat, g->adj_sizes, g->num_nodes, interval)) {
       destroyMatrix(mat, g->num_nodes);
       free(elems);
+      destroy_ollist(children);
       return res;
     }
+    e = e->next;
   }
+  destroy_ollist(children);
   printf("ERROR! could not schedule graph!\n");
   return NULL;
 }
@@ -821,19 +846,19 @@ int main(int argc, char* argv[]) {
       for (uint32_t k = 0; k < ip->cells.len + 1; ++k) {
         pcptr[k] = 4*k;
       }
-      nparts = NUM_MICRO_PARTITIONS;
+      ip->num_micro_partitions = NUM_MICRO_PARTITIONS;
       uint32_t* intcpart = malloc((ip->cells.len+1) * sizeof(*intcpart));
       uint32_t* intnpart = malloc(ip->nodes.len * sizeof(*intnpart));
-      METIS_PartMeshNodal((int*)&ip->cells.len,(int*)&ip->nodes.len, (int*)pcptr, (int*)ip->c2n, NULL, NULL, (int*)&nparts, NULL, NULL, &objval, (int*)intcpart, (int*)intnpart);
+      METIS_PartMeshNodal((int*)&ip->cells.len,(int*)&ip->nodes.len, (int*)pcptr, (int*)ip->c2n, NULL, NULL, (int*)&ip->num_micro_partitions, NULL, NULL, &objval, (int*)intcpart, (int*)intnpart);
       free(pcptr);
 
-      ip->cg = generateGraph(intnpart, ip->c2n, 4, ip->cells.len, nparts);
+      ip->cg = generateGraph(intnpart, ip->c2n, 4, ip->cells.len, ip->num_micro_partitions);
       colourGraph(ip->cg);
-      ip->parts_nodes = malloc(nparts * sizeof(*ip->parts_nodes));
-      ip->parts_cells = malloc(nparts * sizeof(*ip->parts_cells));
-      ip->parts_edges = malloc(nparts * sizeof(*ip->parts_edges));
-      hash_set* bottom_edge_sets[nparts];
-      for (uint32_t k = 0; k < nparts; ++k) {
+      ip->parts_nodes = malloc(ip->num_micro_partitions * sizeof(*ip->parts_nodes));
+      ip->parts_cells = malloc(ip->num_micro_partitions * sizeof(*ip->parts_cells));
+      ip->parts_edges = malloc(ip->num_micro_partitions * sizeof(*ip->parts_edges));
+      hash_set* bottom_edge_sets[ip->num_micro_partitions];
+      for (uint32_t k = 0; k < ip->num_micro_partitions; ++k) {
         bottom_edge_sets[k] = createHashSet(SMALL_PRIME);
       }
       for (uint32_t k = 0; k < ip->edges.len; ++k) {
@@ -843,7 +868,7 @@ int main(int argc, char* argv[]) {
         addToHashSet(bottom_edge_sets[intnpart[n[0]]], ip->edges.arr[k]);
       }
       uint32_t se = 0;
-      for (uint32_t k = 0; k < nparts; ++k) {
+      for (uint32_t k = 0; k < ip->num_micro_partitions; ++k) {
         ip->parts_edges[k] = *toArr(bottom_edge_sets[k]);
         destroyHashSet(bottom_edge_sets[k]);
         se += ip->parts_edges[k].len;
@@ -966,8 +991,15 @@ int main(int argc, char* argv[]) {
     for (short p = 0; p < 2; ++p) { 
       initArr(&ps[i].iparts[p].edgesOrdered, EDGES_PER_PARTITION / 2);
       ugraph* g = ps[i].iparts[p].cg;
-    //  colour_list* cl = toColourList(g);
+      colour_list* cl = toColourList(g);
+      for (uint32_t c = 0; c < cl->num_colours; ++c) {
+        if (cl->sizes[c] < PIPELINE_LATENCY) {
+          ps[i].iparts[p].num_micro_partitions += PIPELINE_LATENCY - cl->sizes[c];
+        }
+      }
+
       ps[i].iparts[p].partitionsOrdered = scheduleGraph2(g, PIPELINE_LATENCY);
+      
       printf("Scheduled partition graph for partition %d of %d is: \n", p, i);
       printf("is schedule valid? %d\n", validSchedule(g, ps[i].iparts[p].partitionsOrdered , PIPELINE_LATENCY));
       for (uint32_t j = 0; j < g->num_nodes; ++j) {
@@ -975,6 +1007,8 @@ int main(int argc, char* argv[]) {
       }
       printf("\n");
     //  showGraph(g);
+
+    //  for (uint32_t c = 0; c < cl->num_colours; ++c) {}
 
 
       uint32_t* partsOrdered = ps[i].iparts[p].partitionsOrdered;

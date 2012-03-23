@@ -293,4 +293,50 @@ void destroyStack(stack* s) {
   free(s);
 }
 
+typedef struct {
+  struct entry* head;
+} ollist;
+
+ollist* createOrdLinkedList() {
+  ollist* res = malloc(sizeof(res));
+  res->head = NULL;
+  return res;
+}
+
+void insert_ollist(ollist* l, uint32_t k, uint32_t v) {
+  if (l->head == NULL || l->head->k > k) {
+    struct entry* e = malloc(sizeof(e));
+    e->k = k;
+    e->v = v;
+    e->next = NULL;
+    l->head = e;
+    return;
+  }
+  struct entry* e = l->head;
+  struct entry* p = l->head;
+  struct entry* ne = malloc(sizeof(e));
+  ne->k = k;
+  ne->v = v;
+  while (e != NULL && e->k <= k) {
+    p = e;
+    e = e->next;
+  }
+  p->next = ne;
+  ne->next = e;
+}
+
+void destroy_ollist(ollist* l) {
+  struct entry* e = l->head;
+  while (e != NULL) {
+    struct entry* n = e->next;
+    free(e);
+    e = n;
+  }
+  free(l);
+}
+
+int ollist_isEmpty(ollist* l) {
+  return l->head == NULL;
+}
+
 #endif
