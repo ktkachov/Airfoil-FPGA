@@ -188,8 +188,8 @@ public class ResControlSM extends KernelStateMachine {
 		@Override
 		public void nextState() {
 			SMValue finishedPartition = finishedPartition();
-			read_sizes_state.next <== finishedPartition;
-			debug.printf("SM nodes_count: %d\n", nodes_count);
+			read_sizes_state.next <== finishedPartition & (sizes.nodes === 0);
+			debug.printf("SM nodes_count: %d, read_sizes_state %d\n", nodes_count, finishedPartition & (sizes.nodes === 0));
 			IF (read_sizes_state) {
 				halo_cell_read_count.next <== 0;
 				halo_read_delay_count.next <== 0;

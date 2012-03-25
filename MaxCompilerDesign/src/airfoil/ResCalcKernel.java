@@ -140,7 +140,7 @@ public class ResCalcKernel extends Kernel {
 			zero_sizes[field] = field.equals("padding") ? hwUInt(sizes_padding).newInstance(this, 0) : size_width_t.newInstance(this, 0);
 		}
 
-		KStruct size_input = io.input("sizes", size_struct_t, read_sizes | (total_count === 0));
+		KStruct size_input = io.input("sizes", size_struct_t, read_sizes);
 //		sizes <== total_count < 6 ? zero_sizes : stream.offset(size_input, -7);
 		sizes <== stream.offset(size_input, -6);
 

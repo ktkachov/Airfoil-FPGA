@@ -1,0 +1,24 @@
+package tests;
+
+import com.maxeler.maxcompiler.v1.kernelcompiler.Kernel;
+import com.maxeler.maxcompiler.v1.managers.standard.SimulationManager;
+
+public class ResCalcSimRunner {
+	public static void main(String[] args) {
+		SimulationManager m = new SimulationManager("ResCalcSim");
+		Kernel k = new ResCalcTestKernel(m.makeKernelParameters());
+		m.setKernel(k);
+
+		long[] data1 = {50, 64, 40, 42, 51};
+		long[] data2 = {25, 32, 21, 24, 23};
+		int sum = 0;
+		for (int i = 0; i < data1.length; ++i) {
+			sum += data1[i];
+		}
+		m.setInputDataLong("input1", data1);
+		m.setInputDataLong("input2", data2);
+		m.setScalarInput("nElems", data1.length);
+		m.setKernelCycles(2*sum + 10);
+		m.runTest();
+	}
+}
