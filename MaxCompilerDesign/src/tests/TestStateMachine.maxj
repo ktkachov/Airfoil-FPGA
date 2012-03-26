@@ -4,52 +4,193 @@ import com.maxeler.maxcompiler.v1.kernelcompiler.KernelLib;
 import com.maxeler.maxcompiler.v1.statemachine.SMInput;
 import com.maxeler.maxcompiler.v1.statemachine.SMOutput;
 import com.maxeler.maxcompiler.v1.statemachine.SMStateValue;
+import com.maxeler.maxcompiler.v1.statemachine.SMValue;
 import com.maxeler.maxcompiler.v1.statemachine.kernel.KernelStateMachine;
 import com.maxeler.maxcompiler.v1.statemachine.types.SMValueType;
 
 public class TestStateMachine extends KernelStateMachine {
-	private final SMInput size;
-	private final SMInput half_size;
-	private final SMStateValue count;
+	private final SMInput size_in;
+	private final SMInput half_size_in;
+	private final SMInput nParts;
+	private final SMStateValue count1;
+	private final SMStateValue count2;
+	private final SMStateValue partsProcessed;
+
+	private final SMStateValue cycle_count;
+
+	private final SMStateValue size1;
+	private final SMStateValue size2;
+	private final SMStateValue hSize1;
+	private final SMStateValue hSize2;
 	private final SMStateValue read_sizes;
+
+	private final SMStateValue request_sizes;
+
+	private final SMStateValue waiting_for_1;
+	private final SMStateValue waiting_for_2;
+
+	private final SMStateValue lat_del_count; //latency delay counter
 	private final SMOutput read_sizes_out;
+
 	private final SMOutput size_out;
 	private final SMOutput half_size_out;
+	private final SMOutput finished_partition;
+
+	private final int lat;
 
 
-
-	public TestStateMachine(KernelLib arg0, int width) {
+	public TestStateMachine(KernelLib arg0, int width, int lat) {
 		super(arg0);
+		this.lat = lat;
 		SMValueType width_t = smUInt(width);
-		size = io.input("size", width_t);
-		half_size = io.input("half_size", width_t);
-		count = state.value(width_t, 0);
-		read_sizes = state.value(smBool(), false);
+		size_in = io.input("size", width_t);
+		half_size_in = io.input("half_size", width_t);
+		count1 = state.value(width_t, 0);
+		count2 = state.value(width_t, 0);
+		nParts = io.scalarInput("numParts", width_t);
+		partsProcessed = state.value(width_t, 0);
+
+
+
+		lat_del_count = state.value(width_t, 0);
+
+		waiting_for_1 = state.value(smBool(), false);
+		waiting_for_2 = state.value(smBool(), false);
+
+		request_sizes = state.value(smBool(), false);
+		read_sizes = state.value(smBool(), true);
+
+		cycle_count = state.value(smUInt(48), 0);
+
+		size1 = state.value(width_t, 0);
+		size2 = state.value(width_t, 0);
+		hSize1 = state.value(width_t, 0);
+		hSize2 = state.value(width_t, 0);
+
 		read_sizes_out = io.output("read_sizes", smBool());
 		size_out = io.output("size_out", width_t);
 		half_size_out = io.output("half_size_out", width_t);
-
+		finished_partition = io.output("finished_partition", smBool());
 	}
 
 	@Override
 	protected void nextState() {
-		IF (size !== 0) {
-			IF (count === half_size & ~read_sizes) {
+		IF (cycle_count < lat) {
+			read_sizes.next <== false;
+		} ELSE IF (cycle_count === lat) {
+			hSize1.next <== half_size_in;
+			size1.next <== size_in;
+			read_sizes.next <== false;
+		} ELSE {
+			SMValue p1NotDone = (size1 !== 0) & (count1 < size1-1);
+			SMValue p2NotDone = (size2 !== 0) & (count2 < size2-1);
+
+
+			IF (count1 === hSize1 - 1 - lat) {
+				request_sizes.next <== true;
+				lat_del_count.next <== 0;
 				read_sizes.next <== true;
-			} ELSE IF (count === size - 1){
-				count.next <== 0;
-				read_sizes.next <== false;
-			} ELSE {
-				count.next <== count + 1;
+				partsProcessed.next <== partsProcessed + 1;
+			} ELSE IF (count2 === hSize2 - 1 - lat) {
+				request_sizes.next <== true;
+				lat_del_count.next <== 0;
+				read_sizes.next <== true;
+				partsProcessed.next <== partsProcessed + 1;
 			}
+
+			IF (read_sizes) {
+				read_sizes.next <== false;
+			}
+
+			IF (request_sizes & lat_del_count < lat) {
+				lat_del_count.next <== lat_del_count + 1;
+			}
+
+			IF (request_sizes & lat_del_count === lat) {
+				IF (count1 === hSize1 | size2 === 0) {
+					size2.next <== size_in;
+					hSize2.next <== half_size_in;
+					count2.next <== 0;
+				} ELSE IF (count2 === hSize2) {
+					size1.next <== size_in;
+					hSize1.next <== half_size_in;
+					count1.next <== 0;
+				}
+				request_sizes.next <== false;
+				lat_del_count.next <== 0;
+			}
+
+			IF (size1 !== 0 & count1 < size1) {
+				count1.next <== count1 + 1;
+			}
+
+			IF (size2 !== 0 & count2 < size2) {
+				count2.next <== count2 + 1;
+			}
+
+
+//			IF (count2 === hSize2 - 1) {
+//				IF (p1NotDone) {
+//					waiting_for_1.next <== true;
+//				} ELSE IF (~waiting_for_1){
+//					read_sizes.next <== true;
+//					count2.next <== count2 + 1;
+//				}
+//			} ELSE IF (count1 === hSize1 - 1) {
+//				IF (p2NotDone) {
+//					waiting_for_2.next <== true;
+//				} ELSE IF (~waiting_for_2) {
+//					read_sizes.next <== true;
+//					count1.next <== count1 + 1;
+//				}
+//			}
+//
+//			IF (count1 === hSize1 & read_sizes) {
+//				hSize2.next <== half_size_in;
+//				size2.next <== size_in;
+//				count2.next <== 0;
+//				count1.next <== count1 + 1;
+//				read_sizes.next <== false;
+//			} ELSE IF (count2 === hSize2 & hSize2 !== 0 & read_sizes){
+//				hSize1.next <== half_size_in;
+//				size1.next <== size_in;
+//				count1.next <== 0;
+//				count2.next <== count2 + 1;
+//				read_sizes.next <== false;
+//			}
+//
+//			IF (count1 === size1 - 1) {
+//				count1.next <== 0;
+//				IF (waiting_for_1) {
+//					waiting_for_1.next <== false;
+//				}
+//			} ELSE IF (count2 === size2 - 1) {
+//				count2.next <== 0;
+//				IF (waiting_for_2) {
+//					waiting_for_2.next <== false;
+//				}
+//
+//			} ELSE {
+//				IF (size1 !== 0 & ~waiting_for_2 & count1 < size1 - 1) {
+//					count1.next <== count1 + 1;
+//				}
+//				IF (size2 !== 0 & ~waiting_for_1 & count2 < size2 - 1) {
+//					count2.next <== count2 + 1;
+//				}
+//			}
+//
 		}
+			debug.printf("size_in:%d cycle:%d, count1:%d/[%d, %d], count2:%d/[%d, %d], read_en:%d, wait1:%d, wait2:%d, lat_count:%d\n",
+					size_in, cycle_count, count1, hSize1, size1, count2, hSize2, size2, read_sizes, waiting_for_1, waiting_for_2, lat_del_count);
+			cycle_count.next <== cycle_count + 1;
 	}
 
 	@Override
 	protected void outputFunction() {
-		read_sizes_out <== read_sizes;
-		size_out <== size;
-		half_size_out <== half_size;
+		read_sizes_out <== read_sizes & partsProcessed < nParts-1;
+		size_out <== size_in;
+		half_size_out <== half_size_in;
+		finished_partition <== (count1 === size1 - 1) | (count2 === size2 - 1);
 	}
 
 }
