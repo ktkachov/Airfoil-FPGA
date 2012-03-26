@@ -206,7 +206,7 @@ public class ResCalcKernel extends Kernel {
 
 		HWVar halo_cell_ram2_addr = (isCell2Halo ? cell2_addr : 0).cast(halo_addr_t);
 		Mem.RamPortParams<KStruct> halo_cell_ram2_portA_params
-		= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_write_count, cell_struct_t)
+			= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_write_count, cell_struct_t)
 			.withDataIn(cell_data_host)
 			.withWriteEnable(read_host_halo_cell)
 			;
@@ -220,7 +220,7 @@ public class ResCalcKernel extends Kernel {
 
 		HWVar halo_node_ram1_addr = (isNode1Halo ? node1_addr : 0).cast(halo_addr_t);
 		Mem.RamPortParams<KStruct> halo_node_ram1_portA_params
-		= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_write_count, node_data_host.getType())
+			= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_write_count, node_data_host.getType())
 			.withDataIn(node_data_host)
 			.withWriteEnable(read_host_halo_node)
 			;
@@ -233,7 +233,7 @@ public class ResCalcKernel extends Kernel {
 
 		HWVar halo_node_ram2_addr = (isNode2Halo ? node2_addr : 0).cast(halo_addr_t);
 		Mem.RamPortParams<KStruct> halo_node_ram2_portA_params
-		= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_write_count, node_data_host.getType())
+			= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_write_count, node_data_host.getType())
 			.withDataIn(node_data_host)
 			.withWriteEnable(read_host_halo_node)
 			;

@@ -1,0 +1,55 @@
+package tests;
+
+import com.maxeler.maxcompiler.v1.kernelcompiler.KernelLib;
+import com.maxeler.maxcompiler.v1.statemachine.SMInput;
+import com.maxeler.maxcompiler.v1.statemachine.SMOutput;
+import com.maxeler.maxcompiler.v1.statemachine.SMStateValue;
+import com.maxeler.maxcompiler.v1.statemachine.kernel.KernelStateMachine;
+import com.maxeler.maxcompiler.v1.statemachine.types.SMValueType;
+
+public class TestStateMachine extends KernelStateMachine {
+	private final SMInput size;
+	private final SMInput half_size;
+	private final SMStateValue count;
+	private final SMStateValue read_sizes;
+	private final SMOutput read_sizes_out;
+	private final SMOutput size_out;
+	private final SMOutput half_size_out;
+
+
+
+	public TestStateMachine(KernelLib arg0, int width) {
+		super(arg0);
+		SMValueType width_t = smUInt(width);
+		size = io.input("size", width_t);
+		half_size = io.input("half_size", width_t);
+		count = state.value(width_t, 0);
+		read_sizes = state.value(smBool(), false);
+		read_sizes_out = io.output("read_sizes", smBool());
+		size_out = io.output("size_out", width_t);
+		half_size_out = io.output("half_size_out", width_t);
+
+	}
+
+	@Override
+	protected void nextState() {
+		IF (size !== 0) {
+			IF (count === half_size & ~read_sizes) {
+				read_sizes.next <== true;
+			} ELSE IF (count === size - 1){
+				count.next <== 0;
+				read_sizes.next <== false;
+			} ELSE {
+				count.next <== count + 1;
+			}
+		}
+	}
+
+	@Override
+	protected void outputFunction() {
+		read_sizes_out <== read_sizes;
+		size_out <== size;
+		half_size_out <== half_size;
+	}
+
+}

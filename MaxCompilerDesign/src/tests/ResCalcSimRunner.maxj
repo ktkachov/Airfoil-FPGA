@@ -18,7 +18,7 @@ public class ResCalcSimRunner {
 		m.setInputDataLong("input1", data1);
 		m.setInputDataLong("input2", data2);
 		m.setScalarInput("nElems", data1.length);
-		m.setKernelCycles(2*sum + 10);
+		m.setKernelCycles(sum + 10);
 		m.runTest();
 	}
 }
