@@ -107,17 +107,20 @@ public class TestStateMachine extends KernelStateMachine {
 			}
 
 			IF (request_sizes & lat_del_count === lat) {
-				IF (count1 === hSize1 | size2 === 0) {
+				IF (count1 === hSize1 & count2 === size2) {
 					size2.next <== size_in;
 					hSize2.next <== half_size_in;
 					count2.next <== 0;
-				} ELSE IF (count2 === hSize2) {
+					request_sizes.next <== false;
+					lat_del_count.next <== 0;
+				} ELSE IF (count2 === hSize2 & count1 === size1) {
 					size1.next <== size_in;
 					hSize1.next <== half_size_in;
 					count1.next <== 0;
+					request_sizes.next <== false;
+					lat_del_count.next <== 0;
 				}
-				request_sizes.next <== false;
-				lat_del_count.next <== 0;
+
 			}
 
 			IF (size1 !== 0 & count1 < size1) {

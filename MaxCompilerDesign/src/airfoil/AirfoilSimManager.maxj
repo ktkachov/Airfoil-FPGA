@@ -1,5 +1,6 @@
 package airfoil;
 
+import com.maxeler.maxcompiler.v1.kernelcompiler.KernelConfiguration.SimulationOptions.SimulationBehaviour;
 import com.maxeler.maxcompiler.v1.managers.MAXBoardModel;
 import com.maxeler.maxcompiler.v1.managers.custom.CustomManager;
 import com.maxeler.maxcompiler.v1.managers.custom.Stream;
@@ -10,9 +11,12 @@ public class AirfoilSimManager extends CustomManager {
 	public AirfoilSimManager(MAXBoardModel board_model, String name,
 			Target target) {
 		super(board_model, name, target);
+		getCurrentKernelConfig().simulation.setRAMAddressCollisionBehaviour(SimulationBehaviour.WARNING);
 		KernelBlock resCalc = addKernel(new ResCalcKernel(makeKernelParameters("ResCalcKernel")));
+
 		Stream in_host_cell = addStreamFromHost("halo_cells");
 		Stream in_host_node = addStreamFromHost("halo_nodes");
+
 
 		Stream nodes_dram = addStreamFromHost("nodes_from_dram");
 		Stream cells_dram = addStreamFromHost("cells_from_dram");

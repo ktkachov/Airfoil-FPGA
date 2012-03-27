@@ -1289,9 +1289,10 @@ int main(int argc, char* argv[]) {
   printf("Opening device %s ... \n", device_name);
   device = max_open_device(maxfile, device_name);
   max_set_terminate_on_error(device);
-  printf("Setting scalar inputs gm1=%f and eps=%f\n", gm1, eps);
+  printf("Setting scalar inputs gm1=%f and eps=%f, nParts=%d\n", gm1, eps, num_parts);
   max_set_scalar_input_f(device, "ResCalcKernel.gm1", gm1, FPGA_A);
   max_set_scalar_input_f(device, "ResCalcKernel.eps", eps, FPGA_A);
+  max_set_scalar_input(device, "ResCalcKernel.nParts", num_parts, FPGA_A);
 
   printf("globalCellsScheduled.len=%d, * sizeof(*cells_scheduled)=%ld, sizeof=%ld\n", globalCellsScheduled.len, globalCellsScheduled.len * sizeof(*cells_scheduled), sizeof(*cells_scheduled));
   printf("sizeof(*nodes_scheduled) = %ld\n", sizeof(*nodes_scheduled));

@@ -3,7 +3,6 @@ package airfoil;
 import com.maxeler.maxcompiler.v1.kernelcompiler.KernelLib;
 import com.maxeler.maxcompiler.v1.statemachine.SMInput;
 import com.maxeler.maxcompiler.v1.statemachine.SMOutput;
-import com.maxeler.maxcompiler.v1.statemachine.SMStateEnum;
 import com.maxeler.maxcompiler.v1.statemachine.SMStateValue;
 import com.maxeler.maxcompiler.v1.statemachine.SMValue;
 import com.maxeler.maxcompiler.v1.statemachine.kernel.KernelStateMachine;
@@ -11,51 +10,82 @@ import com.maxeler.maxcompiler.v1.statemachine.types.SMValueType;
 
 public class ResControlSM extends KernelStateMachine {
 
-	public enum ProcessingStates {
-		ENABLED, DISABLED
-	}
 
-	public enum WritingStates {
-		ENABLED, DISABLED
-	}
+	/*
+	 * States:
+	 * 0: Stream in nhd1 + ihd (stream out nhd2 + ihd if not first partition)
+	 * 1: Process nhd1 + ihd, Stream in nhd2
+	 * 2: Process nhd2 + ihd, stream out nhd1,
+	 * 3: Read Sizes
+	 * */
+
+	private final SMStateValue st;
+
 
 	private class Counts {
-		final SMStateValue nodes;
-		final SMStateValue cells;
-		final SMStateValue halo_cells;
-		final SMStateValue halo_nodes;
-		final SMStateValue edges;
-		final SMStateValue iph_cells; // Intra partition halo cells
-		final SMStateValue iph_nodes;
-		final SMStateValue nhd1_cells;
-		final SMStateValue nhd1_edges;
+		final SMStateValue part1_non_halo_nodes_stream_in;
+		final SMStateValue part1_halo_cells_stream_in;
+		final SMStateValue part1_halo_nodes_stream_in;
+		final SMStateValue part1_non_halo_cells_stream_in;
+
+		final SMStateValue part1_non_halo_cells_stream_out;
+		final SMStateValue part1_halo_cells_stream_out;
+
+		final SMStateValue cells_stream_in;
+
+		final SMStateValue part2_non_halo_nodes_stream_in;
+		final SMStateValue part2_halo_nodes_stream_in;
+		final SMStateValue part2_non_halo_cells_stream_in;
+		final SMStateValue part2_halo_cells_stream_in;
+
+		final SMStateValue part2_non_halo_cells_stream_out;
+		final SMStateValue part2_halo_cells_stream_out;
+
+
+
+
+		final SMStateValue part1_edges;
 		final SMStateValue nhd1_nodes;
 		final SMStateValue nhd2_cells;
 		final SMStateValue nhd2_nodes;
-		final SMStateValue nhd2_edges;
-
-		public Counts(SMStateValue nodes, SMStateValue cells,
-				SMStateValue halo_cells, SMStateValue halo_nodes,
-				SMStateValue edges, SMStateValue iph_cells,
-				SMStateValue iph_nodes,
-				SMStateValue nhd1_cells, SMStateValue nhd1_edges,
-				SMStateValue nhd1_nodes, SMStateValue nhd2_cells,
-				SMStateValue nhd2_nodes, SMStateValue nhd2_edges) {
+		final SMStateValue part2_edges;
+		public Counts(SMStateValue part1_non_halo_nodes_stream_in,
+				SMStateValue part1_halo_cells_stream_in,
+				SMStateValue part1_halo_nodes_stream_in,
+				SMStateValue part1_non_halo_cells_stream_in,
+				SMStateValue part1_non_halo_cells_stream_out,
+				SMStateValue part1_halo_cells_stream_out,
+				SMStateValue cells_stream_in,
+				SMStateValue part2_non_halo_nodes_stream_in,
+				SMStateValue part2_halo_nodes_stream_in,
+				SMStateValue part2_non_halo_cells_stream_in,
+				SMStateValue part2_halo_cells_stream_in,
+				SMStateValue part2_non_halo_cells_stream_out,
+				SMStateValue part2_halo_cells_stream_out,
+				SMStateValue part1_edges, SMStateValue nhd1_nodes,
+				SMStateValue nhd2_cells, SMStateValue nhd2_nodes,
+				SMStateValue part2_edges) {
 			super();
-			this.nodes = nodes;
-			this.cells = cells;
-			this.halo_cells = halo_cells;
-			this.halo_nodes = halo_nodes;
-			this.edges = edges;
-			this.iph_cells = iph_cells;
-			this.iph_nodes = iph_nodes;
-			this.nhd1_cells = nhd1_cells;
-			this.nhd1_edges = nhd1_edges;
+			this.part1_non_halo_nodes_stream_in = part1_non_halo_nodes_stream_in;
+			this.part1_halo_cells_stream_in = part1_halo_cells_stream_in;
+			this.part1_halo_nodes_stream_in = part1_halo_nodes_stream_in;
+			this.part1_non_halo_cells_stream_in = part1_non_halo_cells_stream_in;
+			this.part1_non_halo_cells_stream_out = part1_non_halo_cells_stream_out;
+			this.part1_halo_cells_stream_out = part1_halo_cells_stream_out;
+			this.cells_stream_in = cells_stream_in;
+			this.part2_non_halo_nodes_stream_in = part2_non_halo_nodes_stream_in;
+			this.part2_halo_nodes_stream_in = part2_halo_nodes_stream_in;
+			this.part2_non_halo_cells_stream_in = part2_non_halo_cells_stream_in;
+			this.part2_halo_cells_stream_in = part2_halo_cells_stream_in;
+			this.part2_non_halo_cells_stream_out = part2_non_halo_cells_stream_out;
+			this.part2_halo_cells_stream_out = part2_halo_cells_stream_out;
+			this.part1_edges = part1_edges;
 			this.nhd1_nodes = nhd1_nodes;
 			this.nhd2_cells = nhd2_cells;
 			this.nhd2_nodes = nhd2_nodes;
-			this.nhd2_edges = nhd2_edges;
+			this.part2_edges = part2_edges;
 		}
+
 	}
 
 	private class Sizes {
@@ -77,11 +107,20 @@ public class ResControlSM extends KernelStateMachine {
 		final SMStateValue nhd1_non_halo_nodes;
 		final SMStateValue nhd1_non_halo_cells;
 
-		final SMStateValue nhd1_edges;
+		final SMStateValue nhd2_non_halo_nodes;
+		final SMStateValue nhd2_non_halo_cells;
+
+		final SMStateValue iph_halo_cells;
+		final SMStateValue iph_halo_nodes;
+		final SMStateValue iph_non_halo_cells;
+		final SMStateValue iph_non_halo_nodes;
+
+
+		final SMStateValue part1_edges;
 		final SMStateValue nhd1_nodes;
 		final SMStateValue nhd2_cells;
 		final SMStateValue nhd2_nodes;
-		final SMStateValue nhd2_edges;
+		final SMStateValue part2_edges;
 
 		public Sizes(SMStateValue nodes, SMStateValue cells,
 				SMStateValue halo_cells, SMStateValue non_halo_cells,
@@ -91,7 +130,11 @@ public class ResControlSM extends KernelStateMachine {
 				SMStateValue nhd1_halo_cells, SMStateValue nhd1_halo_nodes,
 				SMStateValue nhd2_halo_cells, SMStateValue nhd2_halo_nodes,
 				SMStateValue nhd1_non_halo_nodes,
-				SMStateValue nhd1_non_halo_cells, SMStateValue nhd1_edges,
+				SMStateValue nhd1_non_halo_cells,
+				SMStateValue nhd2_non_halo_nodes,
+				SMStateValue nhd2_non_halo_cells, SMStateValue iph_halo_cells,
+				SMStateValue iph_halo_nodes, SMStateValue iph_non_halo_cells,
+				SMStateValue iph_non_halo_nodes, SMStateValue nhd1_edges,
 				SMStateValue nhd1_nodes, SMStateValue nhd2_cells,
 				SMStateValue nhd2_nodes, SMStateValue nhd2_edges) {
 			super();
@@ -111,39 +154,32 @@ public class ResControlSM extends KernelStateMachine {
 			this.nhd2_halo_nodes = nhd2_halo_nodes;
 			this.nhd1_non_halo_nodes = nhd1_non_halo_nodes;
 			this.nhd1_non_halo_cells = nhd1_non_halo_cells;
-			this.nhd1_edges = nhd1_edges;
+			this.nhd2_non_halo_nodes = nhd2_non_halo_nodes;
+			this.nhd2_non_halo_cells = nhd2_non_halo_cells;
+			this.iph_halo_cells = iph_halo_cells;
+			this.iph_halo_nodes = iph_halo_nodes;
+			this.iph_non_halo_cells = iph_non_halo_cells;
+			this.iph_non_halo_nodes = iph_non_halo_nodes;
+			this.part1_edges = nhd1_edges;
 			this.nhd1_nodes = nhd1_nodes;
 			this.nhd2_cells = nhd2_cells;
 			this.nhd2_nodes = nhd2_nodes;
-			this.nhd2_edges = nhd2_edges;
+			this.part2_edges = nhd2_edges;
 		}
-
-
-
-
-
 
 	}
 
-	private final Sizes sizes1;
-	private final Sizes sizes2;
-	private final Counts counts1;
-	private final Counts counts2;
+	private final Sizes sizes;
+	private final Counts counts;
 
-	private final SMStateEnum<ProcessingStates> process_state;
-	private final SMStateEnum<WritingStates> write_state;
 
-	private final SMStateValue nodes_count;
-	private final SMStateValue cells_count;
-	private final SMStateValue edges_count;
-	private final SMStateValue halo_cell_read_count;
-	private final SMStateValue halo_node_read_count;
 	private final SMStateValue halo_read_delay_count;
 	private final SMStateValue halo_write_delay_count;
 	private final SMStateValue read_sizes;
-	private final SMStateValue process_count;
-	private final SMStateValue write_count;
-	private final SMStateValue write_halo_count;
+
+	private final SMStateValue partition_count;
+	private final SMStateValue lat_del_count;
+
 
 	private final SMOutput processing;
 	private final SMOutput writing;
@@ -175,9 +211,7 @@ public class ResControlSM extends KernelStateMachine {
 	private final SMInput nhd1_halo_cells_in;
 	private final SMInput nhd2_halo_nodes_in;
 	private final SMInput nhd2_halo_cells_in;
-
-	private final SMStateValue request_sizes;
-
+	private final SMInput nParts;
 
 	private final int lat;
 	private final SMStateValue cycle_count;
@@ -188,25 +222,13 @@ public class ResControlSM extends KernelStateMachine {
 		this.lat = lat;
 		SMValueType addr_t 		= smUInt(addr_width);
 		this.halo_io_delay		= halo_delay;
-		nodes_count 			= state.value(smUInt(width), 0);
-		cells_count 			= state.value(smUInt(width), 0);
-		edges_count 			= state.value(smUInt(width), 0);
-		halo_cell_read_count 	= state.value(smUInt(width), 0);
-		halo_node_read_count	= state.value(smUInt(width), 0);
 		halo_read_delay_count 	= state.value(smUInt(width), 0);
-		read_sizes		= state.value(smBool(), true);
-		process_count			= state.value(addr_t, 0);
-		write_count				= state.value(addr_t, 0);
-		write_halo_count		= state.value(addr_t, 0);
+		read_sizes				= state.value(smBool(), true);
 		halo_write_delay_count	= state.value(addr_t, 0);
+		partition_count			= state.value(addr_t, 0);
+		st						= state.value(smUInt(2), 3);
 
-		cycle_count 			= state.value(smUInt(48));
-		request_sizes			= state.value(smBool(), false);
-
-		process_state = state.enumerated(ProcessingStates.class,
-				ProcessingStates.DISABLED);
-		write_state = state.enumerated(WritingStates.class,
-				WritingStates.DISABLED);
+		cycle_count 			= state.value(smUInt(48), 0);
 
 		edges_in		= io.input("edges", addr_t);
 		nodes_in		= io.input("nodes", addr_t);
@@ -228,6 +250,7 @@ public class ResControlSM extends KernelStateMachine {
 		nhd1_halo_cells_in = io.input("nhd1_halo_cells", addr_t);
 		nhd2_halo_nodes_in = io.input("nhd2_halo_nodes", addr_t);
 		nhd2_halo_cells_in = io.input("nhd2_halo_cells", addr_t);
+		nParts			= io.input("nParts", addr_t);
 
 		processing 		= io.output("processing", smBool());
 		writing 		= io.output("writing", smBool());
@@ -239,7 +262,9 @@ public class ResControlSM extends KernelStateMachine {
 		read_node 		= io.output("read_node", smBool());
 		writing_halo	= io.output("writing_halo", smBool());
 
-		sizes1 = new Sizes(state.value(addr_t, 0),
+		lat_del_count   = state.value(addr_t, 0);
+
+		sizes = new Sizes(state.value(addr_t, 0),
 					state.value(addr_t, 0),
 					state.value(addr_t, 0),
 					state.value(addr_t, 0),
@@ -249,6 +274,12 @@ public class ResControlSM extends KernelStateMachine {
 					state.value(addr_t, 0),
 					state.value(addr_t, 0),
 					state.value(addr_t, 0),
+					state.value(addr_t,0),
+					state.value(addr_t,0),
+					state.value(addr_t,0),
+					state.value(addr_t,0),
+					state.value(addr_t,0),
+					state.value(addr_t,0),
 					state.value(addr_t,0),
 					state.value(addr_t,0),
 					state.value(addr_t,0),
@@ -262,17 +293,10 @@ public class ResControlSM extends KernelStateMachine {
 					state.value(addr_t,0)
 				);
 
-		sizes2 = new Sizes(state.value(addr_t, 0),
+		counts = new Counts(state.value(addr_t, 0),
 				state.value(addr_t, 0),
 				state.value(addr_t, 0),
 				state.value(addr_t, 0),
-				state.value(addr_t, 0),
-				state.value(addr_t, 0),
-				state.value(addr_t,0),
-				state.value(addr_t,0),
-				state.value(addr_t,0),
-				state.value(addr_t,0),
-				state.value(addr_t,0),
 				state.value(addr_t, 0),
 				state.value(addr_t, 0),
 				state.value(addr_t, 0),
@@ -280,17 +304,6 @@ public class ResControlSM extends KernelStateMachine {
 				state.value(addr_t,0),
 				state.value(addr_t,0),
 				state.value(addr_t,0),
-				state.value(addr_t,0),
-				state.value(addr_t,0),
-				state.value(addr_t,0)
-			);
-
-		counts1 = new Counts(state.value(addr_t, 0),
-				state.value(addr_t, 0),
-				state.value(addr_t, 0),
-				state.value(addr_t, 0),
-				state.value(addr_t, 0),
-				state.value(addr_t, 0),
 				state.value(addr_t,0),
 				state.value(addr_t,0),
 				state.value(addr_t,0),
@@ -300,46 +313,11 @@ public class ResControlSM extends KernelStateMachine {
 				state.value(addr_t,0)
 			);
 
-		counts2 = new Counts(state.value(addr_t, 0),
-				state.value(addr_t, 0),
-				state.value(addr_t, 0),
-				state.value(addr_t, 0),
-				state.value(addr_t, 0),
-				state.value(addr_t, 0),
-				state.value(addr_t,0),
-				state.value(addr_t,0),
-				state.value(addr_t,0),
-				state.value(addr_t,0),
-				state.value(addr_t,0),
-				state.value(addr_t,0),
-				state.value(addr_t,0)
-			);
 
-	}
-
-
-	private SMValue finishedPartition() {
-		return (nodes_count === sizes1.nodes) &
-		(cells_count === sizes1.cells) &
-		(halo_cell_read_count === sizes1.halo_cells) &
-		(halo_node_read_count === sizes1.halo_nodes) &
-		(process_count === sizes1.edges) &
-		(write_count === sizes1.edges) &
-		(write_halo_count === sizes1.halo_cells)
-		;
-	}
-
-	private SMValue partHalfWay(Sizes s, Counts c) {
-		SMValue res =
-			c.cells === s.nhd1_non_halo_cells &
-			c.halo_cells === s.nhd1_halo_cells &
-			c.nodes === s.nhd1_non_halo_nodes &
-			c.halo_nodes === s.nhd1_halo_nodes
-			;
-		return null;
 	}
 
 	private void readInSizes(Sizes s, Counts c) {
+		debug.printf("reading sizes: cycle:%d, nodes:%d\n", cycle_count, nodes_in);
 		s.cells.next <== cells_in;
 		s.edges.next <== edges_in;
 		s.nodes.next <== nodes_in;
@@ -348,10 +326,10 @@ public class ResControlSM extends KernelStateMachine {
 		s.iph_cells.next <== iph_cells_in;
 		s.iph_nodes.next <== iph_nodes_in;
 		s.nhd1_cells.next <== nhd1_cells_in;
-		s.nhd1_edges.next <== nhd1_edges_in;
+		s.part1_edges.next <== nhd1_edges_in;
 		s.nhd1_nodes.next <== nhd1_nodes_in;
 		s.nhd2_cells.next <== nhd2_cells_in;
-		s.nhd2_edges.next <== nhd2_edges_in;
+		s.part2_edges.next <== nhd2_edges_in;
 		s.nhd2_nodes.next <== nhd2_nodes_in;
 		s.nhd1_halo_cells.next <== nhd1_halo_cells_in;
 		s.nhd1_halo_nodes.next <== nhd1_halo_nodes_in;
@@ -362,126 +340,301 @@ public class ResControlSM extends KernelStateMachine {
 		s.non_halo_nodes.next <== nodes_in - halo_nodes_in;
 		s.nhd1_non_halo_cells.next <== nhd1_cells_in - nhd1_halo_cells_in;
 		s.nhd1_non_halo_nodes.next <== nhd1_nodes_in - nhd1_halo_nodes_in;
+		s.nhd2_non_halo_cells.next <== nhd2_cells_in - nhd2_halo_cells_in;
+		s.nhd2_non_halo_nodes.next <== nhd2_nodes_in - nhd2_halo_nodes_in;
+		s.iph_halo_cells.next <== halo_cells_in - nhd1_halo_cells_in - nhd2_halo_cells_in;
+		s.iph_halo_nodes.next <== halo_nodes_in - nhd1_halo_nodes_in - nhd2_halo_nodes_in;
+		s.iph_non_halo_cells.next <== iph_cells_in - (halo_cells_in - nhd1_halo_cells_in - nhd2_halo_cells_in);
+		s.iph_non_halo_nodes.next <== iph_nodes_in - (halo_nodes_in - nhd1_halo_nodes_in - nhd2_halo_nodes_in);
 
-		c.cells.next <== 0;
-		c.edges.next <== 0;
-		c.halo_cells.next <== 0;
-		c.halo_nodes.next <== 0;
-		c.iph_cells.next <== 0;
-		c.iph_nodes.next <== 0;
-		c.nhd1_cells.next <== 0;
-		c.nhd1_edges.next <== 0;
+		c.cells_stream_in.next <== 0;
 		c.nhd1_nodes.next <== 0;
 		c.nhd2_cells.next <== 0;
-		c.nhd2_edges.next <== 0;
 		c.nhd2_nodes.next <== 0;
-		c.nodes.next <== 0;
+		c.part1_edges.next <== 0;
+		c.part1_halo_cells_stream_in.next <== 0;
+		c.part1_halo_nodes_stream_in.next <== 0;
+		c.part1_non_halo_cells_stream_in.next <== 0;
+		c.part1_non_halo_cells_stream_out.next <== 0;
+		c.part1_non_halo_nodes_stream_in.next <== 0;
+		c.part2_edges.next <== 0;
+		c.part2_halo_cells_stream_in.next <== 0;
+		c.part2_halo_cells_stream_out.next <== 0;
+		c.part2_halo_nodes_stream_in.next <== 0;
+		c.part2_non_halo_cells_stream_in.next <== 0;
+		c.part2_non_halo_cells_stream_out.next <== 0;
+		c.part2_non_halo_nodes_stream_in.next <== 0;
 	}
 
-		@Override
-		public void nextState() {
+	private SMValue streamInNhd1IhdFinished() {
+		SMValue res =
+			counts.part1_non_halo_cells_stream_in === sizes.nhd1_non_halo_cells  + sizes.iph_non_halo_cells &
+			counts.part1_halo_cells_stream_in === sizes.nhd1_halo_cells + sizes.iph_halo_cells &
+			counts.part1_non_halo_nodes_stream_in === sizes.nhd1_non_halo_nodes + sizes.iph_non_halo_nodes &
+			counts.part1_halo_nodes_stream_in === sizes.nhd1_halo_nodes + sizes.iph_halo_nodes
+			;
+		return res;
+	}
 
-			IF (cycle_count < lat) {
-				read_sizes.next <== false;
-			} ELSE IF (cycle_count === lat) {
-				readInSizes(sizes1, counts1);
-				read_sizes.next <== false;
+	private SMValue streamInNhd2Finished() {
+		SMValue res =
+			counts.part2_non_halo_cells_stream_in === sizes.nhd2_non_halo_cells &
+			counts.part2_halo_cells_stream_in === sizes.nhd2_halo_cells &
+			counts.part2_non_halo_nodes_stream_in === sizes.nhd2_non_halo_nodes &
+			counts.part2_halo_nodes_stream_in === sizes.nhd2_halo_nodes
+			;
+		return res;
+	}
+
+	private SMValue streamOutNhd2IhdFinished() {
+		SMValue res =
+			counts.part2_non_halo_cells_stream_out === sizes.nhd2_non_halo_cells + sizes.iph_non_halo_cells &
+			counts.part2_halo_cells_stream_out === sizes.nhd2_halo_cells + sizes.iph_halo_cells
+			;
+		return res;
+	}
+
+	private SMValue streamOutNhd1Finished() {
+		SMValue res =
+			counts.part1_halo_cells_stream_out === sizes.nhd1_halo_cells &
+			counts.part1_non_halo_cells_stream_out === sizes.nhd1_non_halo_cells
+			;
+		return res;
+	}
+
+	private SMValue processNhd1IhdFinished() {
+		SMValue res =
+			counts.part1_edges === sizes.part1_edges;
+			;
+		return res;
+	}
+
+	private SMValue processNhd2IhdFinished() {
+		SMValue res =
+			counts.part2_edges === sizes.part2_edges;
+		return res;
+	}
+
+	private void updateCountsState0() {
+		IF (counts.part1_non_halo_cells_stream_in < sizes.nhd1_non_halo_cells + sizes.iph_non_halo_cells) {
+			counts.part1_non_halo_cells_stream_in.next <== counts.part1_non_halo_cells_stream_in + 1;
+		}
+
+		IF (counts.part1_non_halo_nodes_stream_in < sizes.nhd1_non_halo_nodes + sizes.iph_non_halo_nodes) {
+			counts.part1_non_halo_nodes_stream_in.next <== counts.part1_non_halo_nodes_stream_in + 1;
+		}
+
+		IF (halo_read_delay_count < halo_io_delay) {
+			halo_read_delay_count.next <== halo_read_delay_count + 1;
+		} ELSE {
+			IF (counts.part1_halo_cells_stream_in < sizes.nhd1_halo_cells + sizes.iph_halo_cells) {
+				counts.part1_halo_cells_stream_in.next <== counts.part1_halo_cells_stream_in + 1;
+				halo_read_delay_count.next <== 0;
+			}
+			IF (counts.part1_halo_nodes_stream_in < sizes.nhd1_halo_nodes + sizes.iph_halo_nodes) {
+				counts.part1_halo_nodes_stream_in.next <== counts.part1_halo_nodes_stream_in + 1;
+				halo_read_delay_count.next <== 0;
+			}
+		}
+
+		IF (partition_count !== 0) {
+
+			IF (counts.part2_non_halo_cells_stream_out < sizes.nhd2_non_halo_cells + sizes.iph_non_halo_cells) {
+				counts.part2_non_halo_cells_stream_out.next <== counts.part2_non_halo_cells_stream_out + 1;
+			}
+
+			IF (halo_write_delay_count < halo_io_delay) {
+				halo_write_delay_count.next <== halo_write_delay_count + 1;
 			} ELSE {
-				IF (read_sizes) {
-					read_sizes.next <== false;
+				IF (counts.part2_halo_cells_stream_out < sizes.nhd2_halo_cells + sizes.iph_halo_cells) {
+					counts.part2_halo_cells_stream_out.next <== counts.part2_halo_cells_stream_out + 1;
+					halo_write_delay_count.next <== 0;
+				}
+			}
+		}
+	}
+
+
+	private void updateCountsState1() {
+		IF (counts.part1_edges < sizes.part1_edges) {
+			counts.part1_edges.next <== counts.part1_edges + 1;
+		}
+		IF (counts.part2_non_halo_cells_stream_in < sizes.nhd2_non_halo_cells) {
+			counts.part2_non_halo_cells_stream_in.next <== counts.part2_non_halo_cells_stream_in + 1;
+		}
+		IF (halo_read_delay_count < halo_io_delay) {
+			halo_read_delay_count.next <== halo_read_delay_count + 1;
+		} ELSE {
+			IF (counts.part2_halo_cells_stream_in < sizes.nhd2_halo_cells) {
+				counts.part2_halo_cells_stream_in.next <== counts.part2_halo_cells_stream_in + 1;
+				halo_read_delay_count.next <== 0;
+			}
+			IF (counts.part2_halo_nodes_stream_in < sizes.nhd2_halo_nodes) {
+				counts.part2_halo_nodes_stream_in.next <== counts.part2_halo_nodes_stream_in + 1;
+				halo_read_delay_count.next <== 0;
+			}
+		}
+
+		IF (counts.part2_non_halo_nodes_stream_in < sizes.nhd2_non_halo_nodes) {
+			counts.part2_non_halo_nodes_stream_in.next <== counts.part2_non_halo_nodes_stream_in + 1;
+		}
+
+	}
+
+	private void updateCountsState2() {
+		IF (counts.part2_edges < sizes.part2_edges) {
+			counts.part2_edges.next <== counts.part2_edges + 1;
+		}
+		IF (halo_write_delay_count < halo_io_delay) {
+			halo_write_delay_count.next <== halo_write_delay_count + 1;
+		} ELSE {
+			IF (counts.part1_halo_cells_stream_out < sizes.nhd1_halo_cells) {
+				counts.part1_halo_cells_stream_out.next <== counts.part1_halo_cells_stream_out + 1;
+				halo_write_delay_count.next <== 0;
+			}
+		}
+		IF (counts.part1_non_halo_cells_stream_out < sizes.nhd1_non_halo_cells) {
+			counts.part1_non_halo_cells_stream_out.next <== counts.part1_non_halo_cells_stream_out + 1;
+		}
+	}
+
+	@Override
+	public void nextState() {
+		cycle_count.next <== cycle_count + 1;
+
+		SWITCH (st) {
+			CASE (0) {
+				IF (partition_count === 0) {
+					IF (streamInNhd1IhdFinished()) {
+						st.next <== 1;
+						halo_read_delay_count.next <== 0;
+						halo_write_delay_count.next <== 0;
+					} ELSE {
+						updateCountsState0();
+					}
+				} ELSE {
+					IF (streamInNhd1IhdFinished() & streamOutNhd2IhdFinished()) {
+						st.next <== 1;
+						halo_read_delay_count.next <== 0;
+						halo_write_delay_count.next <== 0;
+					} ELSE {
+						updateCountsState0();
+					}
 				}
 			}
 
-//			SMValue finishedPartition = finishedPartition();
-//			read_sizes_state.next <== finishedPartition & (sizes1.nodes === 0);
-//			debug.printf("SM nodes_count: %d, read_sizes_state %d\n", nodes_count, finishedPartition & (sizes1.nodes === 0));
-//			IF (read_sizes_state) {
-//				halo_cell_read_count.next <== 0;
-//				halo_read_delay_count.next <== 0;
-//				halo_node_read_count.next <== 0;
-//				nodes_count.next <== 0;
-//				cells_count.next <== 0;
-//				edges_count.next <== 0;
-//				process_count.next <== 0;
-//				write_count.next <== 0;
-//				write_halo_count.next <== 0;
-//
-//				process_state.next <== ProcessingStates.DISABLED;
-//				write_state.next <== WritingStates.DISABLED;
-//
-//				sizes1.cells.next <== cells_in;
-//				sizes1.edges.next <== edges_in;
-//				sizes1.nodes.next <== nodes_in;
-//				sizes1.halo_cells.next <== halo_cells_in;
-//				sizes1.halo_nodes.next <== halo_nodes_in;
-//				sizes1.iph_cells.next <== iph_cells_in;
-//				sizes1.iph_nodes.next <== iph_nodes_in;
-//				sizes1.nhd1_cells.next <== nhd1_cells_in;
-//				sizes1.nhd1_edges.next <== nhd1_edges_in;
-//				sizes1.nhd1_nodes.next <== nhd1_nodes_in;
-//				sizes1.nhd2_cells.next <== nhd2_cells_in;
-//				sizes1.nhd2_edges.next <== nhd2_edges_in;
-//				sizes1.nhd2_nodes.next <== nhd2_nodes_in;
-//
-////				sizes.iph_nodes = ;
-////				this.iph_edges = iph_edges;
-////				this.nhd1_edges = nhd1_edges;
-////				this.nhd1_nodes = nhd1_nodes;
-////				this.nhd2_nodes = nhd2_nodes;
-////				this.nhd2_edges = nhd2_edges;
-//
-//
-//
-//			} ELSE {
-//				IF ((halo_read_delay_count === halo_io_delay) & (halo_cell_read_count < sizes1.halo_cells)) {
-//					halo_read_delay_count.next <== 0;
-//					halo_cell_read_count.next <== halo_cell_read_count + 1;
-//					halo_node_read_count.next <== halo_node_read_count + 1;
-//				} ELSE {
-//					halo_read_delay_count.next <== halo_read_delay_count + 1;
-//				}
-//				IF (nodes_count < sizes1.nodes) {
-//					nodes_count.next <== nodes_count + 1;
-//				}
-//				IF (cells_count < sizes1.cells) {
-//					cells_count.next <== cells_count + 1;
-//				}
-//				IF (edges_count < sizes1.edges) {
-//					edges_count.next <== edges_count + 1;
-//				}
-//				IF (nodes_count > (sizes1.nhd1_nodes + sizes1.iph_nodes) & (cells_count > sizes1.nhd1_cells + sizes1.iph_cells) & process_count < sizes1.edges) {
-//					process_state.next <== ProcessingStates.ENABLED;
-//					process_count.next <== process_count + 1;
-//				} ELSE {
-//					process_state.next <== ProcessingStates.DISABLED;
-//				}
-//				IF (process_state === ProcessingStates.ENABLED & process_count >= sizes1.nhd1_edges) {
-//					write_state.next <== WritingStates.ENABLED;
-//					write_count.next <== write_count + 1;
-//
-//					IF (halo_write_delay_count === halo_io_delay & write_halo_count < sizes1.halo_cells) {
-//						halo_write_delay_count.next <== 0;
-//						write_halo_count.next <== write_halo_count + 1;
-//					} ELSE {
-//						halo_write_delay_count.next <== halo_write_delay_count + 1;
-//					}
-//
-//				} ELSE {
-//					write_state.next <== WritingStates.DISABLED;
-//				}
-//			}
+			CASE (1) {
+				IF (processNhd1IhdFinished() & streamInNhd2Finished()) {
+					st.next <== 2;
+					halo_read_delay_count.next <== 0;
+					halo_write_delay_count.next <== 0;
+				} ELSE {
+					updateCountsState1();
+				}
+			}
+
+			CASE (2) {
+				IF (processNhd2IhdFinished() & streamOutNhd1Finished()) {
+					st.next <== 3;
+					lat_del_count.next <== 0;
+				} ELSE {
+					updateCountsState2();
+				}
+			}
+
+			CASE (3) {
+				IF (lat_del_count === 0 & ~read_sizes) {
+					read_sizes.next <== true;
+				}
+				IF (read_sizes) {
+					read_sizes.next <== false;
+				}
+				IF (lat_del_count === lat) {
+					debug.printf("Will read in sizes: cycle: %d\n", cycle_count);
+					readInSizes(sizes, counts);
+					partition_count.next <== partition_count + 1;
+					lat_del_count.next <== 0;
+					st.next <== 0;
+				} ELSE {
+					lat_del_count.next <== lat_del_count + 1;
+				}
+			}
+
+			OTHERWISE {
+
+			}
 		}
+
+	}
 
 	@Override
 		public void outputFunction() {
-			read_sizes_out <== read_sizes;
-			halo_read_cell <== (halo_read_delay_count === halo_io_delay) & halo_cell_read_count < sizes1.halo_cells & ~read_sizes;
-			halo_read_node <== (halo_read_delay_count === halo_io_delay) & halo_node_read_count < sizes1.halo_nodes &~read_sizes;
-			read_cell <== (cells_count < sizes1.cells) & ~read_sizes;
-			read_node <== (nodes_count < sizes1.nodes) & ~read_sizes;
-			read_edge <== (edges_count < sizes1.edges) & ~read_sizes;
-			processing <== process_state === ProcessingStates.ENABLED;
-			writing <== write_state === WritingStates.ENABLED;
-			writing_halo <== write_state === WritingStates.ENABLED & write_halo_count < sizes1.halo_cells;
+			debug.printf("simlog.log","cycle: %d | nodes:%d | pCount:%d | state:%d, lat_count:%d \n",cycle_count, sizes.nodes, partition_count, st, lat_del_count);
+			SWITCH (st) {
+				CASE (0) {
+					processing <== false;
+					IF (partition_count === 0) {
+						writing <== false;
+						writing_halo <== false;
+					} ELSE {
+						writing <== counts.part2_non_halo_cells_stream_out < sizes.nhd2_non_halo_cells + sizes.iph_non_halo_cells;
+						writing_halo <== counts.part2_halo_cells_stream_out < sizes.nhd2_halo_cells + sizes.iph_halo_cells & halo_write_delay_count === 0;
+					}
+					halo_read_cell <== counts.part1_halo_cells_stream_in < sizes.nhd1_halo_cells + sizes.iph_halo_cells & halo_read_delay_count === 0;
+					halo_read_node <== counts.part1_halo_nodes_stream_in < sizes.nhd1_halo_nodes + sizes.iph_halo_nodes & halo_read_delay_count === 0;
+					read_edge <== false;
+					read_cell <== counts.part1_non_halo_cells_stream_in < sizes.nhd1_non_halo_cells + sizes.iph_non_halo_cells;
+					read_node <== counts.part1_non_halo_nodes_stream_in < sizes.nhd1_non_halo_nodes + sizes.iph_non_halo_nodes;
+					read_sizes_out <== false;
+				}
+
+				CASE (1) {
+					processing <== ~processNhd1IhdFinished();
+					writing <== false;
+					writing_halo <== false;
+					halo_read_cell <== counts.part2_halo_cells_stream_in < sizes.nhd2_halo_cells & halo_read_delay_count === 0;
+					halo_read_node <== counts.part2_halo_nodes_stream_in < sizes.nhd2_halo_nodes & halo_read_delay_count === 0;
+					read_edge <== ~processNhd1IhdFinished();
+					read_cell <== counts.part2_non_halo_cells_stream_in < sizes.nhd2_non_halo_cells;
+					read_node <== counts.part2_non_halo_nodes_stream_in < sizes.nhd2_non_halo_nodes;
+					read_sizes_out <== false;
+				}
+
+				CASE (2) {
+					processing <== ~processNhd2IhdFinished();
+					writing <== counts.part1_non_halo_cells_stream_out < sizes.nhd1_non_halo_cells;
+					writing_halo <== counts.part1_halo_cells_stream_out < sizes.nhd1_halo_cells & halo_write_delay_count === 0;
+					halo_read_cell <== false;
+					halo_read_node <== false;
+					read_edge <== ~processNhd2IhdFinished();
+					read_cell <== false;
+					read_node <== false;
+					read_sizes_out <== false;
+				}
+
+				CASE (3) {
+					processing <== false;
+					writing <== false;
+					writing_halo <== false;
+					halo_read_cell <== false;
+					halo_read_node <== false;
+					read_edge <== false;
+					read_cell <== false;
+					read_node <== false;
+					read_sizes_out <== read_sizes & partition_count < nParts;
+				}
+				OTHERWISE {
+
+				}
+			}
+
+//			halo_read_cell <== (halo_read_delay_count === halo_io_delay) & halo_cell_read_count < sizes.halo_cells & ~read_sizes;
+//			halo_read_node <== (halo_read_delay_count === halo_io_delay) & halo_node_read_count < sizes.halo_nodes &~read_sizes;
+//			read_cell <== (cells_count < sizes.cells) & ~read_sizes;
+//			read_node <== (nodes_count < sizes.nodes) & ~read_sizes;
+//			read_edge <== (edges_count < sizes.edges) & ~read_sizes;
+//			processing <== process_state === ProcessingStates.ENABLED;
+//			writing <== write_state === WritingStates.ENABLED;
+//			writing_halo <== write_state === WritingStates.ENABLED & write_halo_count < sizes.halo_cells;
 		}
 }
