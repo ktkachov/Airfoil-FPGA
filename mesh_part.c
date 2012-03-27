@@ -39,7 +39,7 @@ max_maxfile_t* max_maxfile_init_ResCalc();
 #define NODES_PER_PARTITION (CELLS_PER_PARTITION)
 
 /*This depends on the arithmetic pipeline depth on the FPGA*/
-#define PIPELINE_LATENCY 5
+#define PIPELINE_LATENCY 1
 #define NUM_MICRO_PARTITIONS (27 * PIPELINE_LATENCY)
 
 #define PRIME 60013
@@ -101,9 +101,11 @@ typedef struct size_vector_struct {
   uint32_t nhd2_cells : ADDR_T;
   uint32_t nhd2_nodes : ADDR_T;
   uint32_t nhd2_edges : ADDR_T;
-  uint32_t padding0;
-  uint32_t padding1;
-  uint32_t padding2 : 3;
+  uint32_t nhd1_halo_cells: ADDR_T;
+  uint32_t nhd1_halo_nodes: ADDR_T;
+  uint32_t nhd2_halo_cells: ADDR_T;
+  uint32_t nhd2_halo_nodes: ADDR_T;
+  uint32_t padding0 : 18;
 } __attribute__((packed)) size_vector_t;
 
 typedef struct edge_address_struct {
@@ -925,7 +927,7 @@ int main(int argc, char* argv[]) {
 
   printf("Initialised halo regions\n");
 
-  /*Determine the cells that are shared between every pair of partitions*/
+  /*Determine the cells and nodes that are shared between every pair of partitions*/
   for (uint32_t i = 0; i < num_parts; ++i) {
     hash_set* hr_cell_sets[ps[i].nneighbours];
     hash_set* halo_nodes = createHashSet(101);
@@ -1102,6 +1104,11 @@ int main(int argc, char* argv[]) {
     size_vectors[p].nhd2_nodes = ps[p].iparts[1].nodes.len;
     size_vectors[p].nhd2_cells = ps[p].iparts[1].cells.len;
     size_vectors[p].nhd2_edges = ps[p].iparts[1].edgesOrdered.len;
+    size_vectors[p].nhd1_halo_cells = numCommonElems(&ps[p].iparts[0].cells, &ps[p].haloCells);
+    size_vectors[p].nhd1_halo_nodes = numCommonElems(&ps[p].iparts[0].nodes, &ps[p].haloNodes);
+    size_vectors[p].nhd2_halo_cells = numCommonElems(&ps[p].iparts[1].cells, &ps[p].haloCells);
+    size_vectors[p].nhd2_halo_nodes = numCommonElems(&ps[p].iparts[1].nodes, &ps[p].haloNodes);
+
     //size_vectors[p].padding = 0;
     /*showSizeVector(&size_vectors[p]);*/
     for (uint32_t n = 0; n < ps[p].nodesOrdered.len; ++n) {
@@ -1265,11 +1272,12 @@ int main(int argc, char* argv[]) {
   posix_memalign((void**)&res_non_halo, 16, globalCellsScheduled.len * sizeof(*res_non_halo));
 // = malloc(globalHaloCellsScheduled.len * sizeof(*res_non_halo));
 
+/*
   printf("Size vectors are:\n");
   for (uint32_t i = 0; i < num_parts; ++i) {
     showSizeVector(&size_vectors[i]);
   }
-
+*/
   #ifdef RUN_FPGA
   short isSimulation = 1;
   char* device_name = isSimulation ? "sim0:sim" : "/dev/maxeler0";

@@ -71,7 +71,7 @@ public class ResCalcKernel extends Kernel {
 			);
 
 
-	private final int sizes_padding = 74;
+	private final int sizes_padding = 18;
 	private final KStructType size_struct_t
 		= new KStructType(
 			KStructType.sft("nodes", size_width_t),
@@ -90,6 +90,10 @@ public class ResCalcKernel extends Kernel {
 			KStructType.sft("nhd2_cells", size_width_t),
 			KStructType.sft("nhd2_nodes", size_width_t),
 			KStructType.sft("nhd2_edges", size_width_t),
+			KStructType.sft("nhd1_halo_cells", size_width_t),
+			KStructType.sft("nhd1_halo_nodes", size_width_t),
+			KStructType.sft("nhd2_halo_cells", size_width_t),
+			KStructType.sft("nhd2_halo_nodes", size_width_t),
 
 			KStructType.sft("padding", hwUInt(sizes_padding)) //FIXME: REMOVE later!!!
 		);
@@ -107,7 +111,7 @@ public class ResCalcKernel extends Kernel {
 		debug.printf("cycle %d\n", total_count);
 		KStruct sizes = size_struct_t.newInstance(this);
 
-		SMIO control_sm = addStateMachine("io_control_sm", new ResControlSM(this, addr_width, 10));
+		SMIO control_sm = addStateMachine("io_control_sm", new ResControlSM(this, addr_width, 10, 6));
 		control_sm.connectInput("cells", (HWVar) sizes.get("cells"));
 		control_sm.connectInput("edges", (HWVar) sizes.get("edges"));
 		control_sm.connectInput("nodes", (HWVar) sizes.get("nodes"));
@@ -121,6 +125,10 @@ public class ResCalcKernel extends Kernel {
 		control_sm.connectInput("nhd2_edges", (HWVar) sizes.get("nhd2_edges"));
 		control_sm.connectInput("iph_cells", (HWVar) sizes.get("iph_cells"));
 		control_sm.connectInput("iph_nodes", (HWVar) sizes.get("iph_nodes"));
+		control_sm.connectInput("nhd1_halo_nodes", (HWVar) sizes.get("nhd1_halo_nodes"));
+		control_sm.connectInput("nhd1_halo_cells", (HWVar) sizes.get("nhd1_halo_cells"));
+		control_sm.connectInput("nhd2_halo_nodes", (HWVar) sizes.get("nhd2_halo_nodes"));
+		control_sm.connectInput("nhd2_halo_cells", (HWVar) sizes.get("nhd2_halo_cells"));
 
 		HWVar read_cell = control_sm.getOutput("read_cell");
 		HWVar read_node = control_sm.getOutput("read_node");
