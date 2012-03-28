@@ -569,11 +569,11 @@ public class ResControlSM extends KernelStateMachine {
 
 	@Override
 		public void outputFunction() {
-			debug.printf("simlog.log","cycle: %d | nodes:%d | pCount:%d | state:%d, lat_count:%d \n",cycle_count, sizes.nodes, partition_count, st, lat_del_count);
+			debug.printf("cycle: %d | nodes:%d | pCount:%d | state:%d, lat_count:%d \n",cycle_count, sizes.nodes, partition_count, st, lat_del_count);
 			SWITCH (st) {
 				CASE (0) {
 					processing <== false;
-					IF (partition_count === 0) {
+					IF (partition_count <= 1) {
 						writing <== false;
 						writing_halo <== false;
 					} ELSE {

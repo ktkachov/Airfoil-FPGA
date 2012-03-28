@@ -30,6 +30,7 @@ void initArr(arr_t* a, uint32_t size) {
   a->arr = malloc(a->maxLen * sizeof(*(a->arr)));
 }
 
+
 void destroyArr(arr_t* a) {
   free(a->arr);
   free(a);
@@ -242,6 +243,20 @@ hash_set* createHashSet(uint32_t size) {
 void destroyHashSet(hash_set* s) {
   destroyHashMap(s);
 }
+
+uint32_t numCommonElems(arr_t* a1, arr_t* a2) {
+  hash_set* s1 = fromArr(a1);
+  hash_set* s2 = fromArr(a2);
+  hash_set* comm = setIntersection(s1, s2);
+  arr_t* comm_arr = toArr(comm);
+  uint32_t res = comm_arr->len;
+  destroyArr(comm_arr);
+  destroyHashSet(s1);
+  destroyHashSet(s2);
+  destroyHashSet(comm);
+  return res;
+}
+
 
 
 

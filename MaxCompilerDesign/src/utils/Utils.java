@@ -3,7 +3,6 @@ package utils;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.maxeler.maxcompiler.v1.kernelcompiler.types.base.HWFix.SignMode;
 import com.maxeler.maxcompiler.v1.kernelcompiler.types.base.HWType;
 import com.maxeler.maxcompiler.v1.kernelcompiler.types.base.HWTypeFactory;
 import com.maxeler.maxcompiler.v1.kernelcompiler.types.base.HWVar;
@@ -11,7 +10,7 @@ import com.maxeler.maxcompiler.v1.kernelcompiler.types.composite.KArrayType;
 
 public class Utils {
 
-	public static final HWType arith_t = HWTypeFactory.hwFix(8, 24, SignMode.TWOSCOMPLEMENT);
+	public static final HWType arith_t = HWTypeFactory.hwFloat(8, 24);
 	public static final KArrayType<HWVar> array2_t = new KArrayType<HWVar>(arith_t, 2);
 	public static final KArrayType<HWVar> array4_t = new KArrayType<HWVar>(arith_t, 4);
 

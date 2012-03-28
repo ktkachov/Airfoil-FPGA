@@ -139,6 +139,10 @@ typedef struct internal_partition_struct {
   arr_t cells;
   arr_t edges;
   arr_t nodes;
+
+  arr_t cells_g;  /*Globally numbered*/
+  arr_t nodes_g;  /*Globally numbered*/
+
   ugraph* cg; /*Connectivity graph for internal partitions*/
   uint32_t* partitionsOrdered;
   uint32_t num_micro_partitions;
@@ -859,20 +863,20 @@ int main(int argc, char* argv[]) {
       ip->parts_nodes = malloc(ip->num_micro_partitions * sizeof(*ip->parts_nodes));
       ip->parts_cells = malloc(ip->num_micro_partitions * sizeof(*ip->parts_cells));
       ip->parts_edges = malloc(ip->num_micro_partitions * sizeof(*ip->parts_edges));
-      hash_set* bottom_edge_sets[ip->num_micro_partitions];
+      hash_set* micro_partition_edge_sets[ip->num_micro_partitions];
       for (uint32_t k = 0; k < ip->num_micro_partitions; ++k) {
-        bottom_edge_sets[k] = createHashSet(SMALL_PRIME);
+        micro_partition_edge_sets[k] = createHashSet(SMALL_PRIME);
       }
       for (uint32_t k = 0; k < ip->edges.len; ++k) {
         uint32_t n[2];
         n[0] = getValue(ip->g2l_nodes, getValue(ps[i].g2l_nodes, edge[2*ip->edges.arr[k]]));
         n[1] = getValue(ip->g2l_nodes, getValue(ps[i].g2l_nodes, edge[2*ip->edges.arr[k] + 1]));
-        addToHashSet(bottom_edge_sets[intnpart[n[0]]], ip->edges.arr[k]);
+        addToHashSet(micro_partition_edge_sets[intnpart[n[0]]], ip->edges.arr[k]);
       }
       uint32_t se = 0;
       for (uint32_t k = 0; k < ip->num_micro_partitions; ++k) {
-        ip->parts_edges[k] = *toArr(bottom_edge_sets[k]);
-        destroyHashSet(bottom_edge_sets[k]);
+        ip->parts_edges[k] = *toArr(micro_partition_edge_sets[k]);
+        destroyHashSet(micro_partition_edge_sets[k]);
         se += ip->parts_edges[k].len;
         //printf("bottom level partition %d of partition %d of partition %d has %d edges\n", k, j, i, ip->parts_edges[k].len);
       }
@@ -887,10 +891,20 @@ int main(int argc, char* argv[]) {
       ps[i].iparts[k].cells = *toArr(newCells); 
       destroyHashSet(newCells);
 
+      initArr(&ps[i].iparts[k].cells_g, ps[i].iparts[k].cells.len);
+      for (uint32_t c = 0; c < ps[i].iparts[k].cells.len; ++c) {
+        addToArr(&ps[i].iparts[k].cells_g, ps[i].cells.arr[ps[i].iparts[k].cells.arr[c]]);
+      }
+
       hash_set* newNodes = setDiff(node_sets[k], node_sets[2]);
       destroyHashSet(node_sets[k]);
       ps[i].iparts[k].nodes = *toArr(newNodes);
       destroyHashSet(newNodes);
+      
+      initArr(&ps[i].iparts[k].nodes_g, ps[i].iparts[k].nodes.len);
+      for (uint32_t n = 0; n < ps[i].iparts[k].nodes.len; ++n) {
+        addToArr(&ps[i].iparts[k].nodes_g, ps[i].nodes.arr[ps[i].iparts[k].nodes.arr[n]]);
+      }
     }
 
   }
@@ -1090,8 +1104,8 @@ int main(int argc, char* argv[]) {
   uint32_t schEdges = 0;
   for (uint32_t i = 0; i < num_parts; ++i) {
     uint32_t p = glPartsSched[i];
-    size_vectors[p].nodes = ps[p].nodes.len;
-    size_vectors[p].cells = ps[p].cells.len;
+    size_vectors[p].nodes = ps[p].nodesOrdered.len;
+    size_vectors[p].cells = ps[p].cellsOrdered.len;
     size_vectors[p].edges = ps[p].iparts[0].edgesOrdered.len + ps[p].iparts[1].edgesOrdered.len;
     size_vectors[p].halo_nodes = ps[p].haloNodes.len;
     size_vectors[p].halo_cells = ps[p].haloCells.len;
@@ -1103,11 +1117,11 @@ int main(int argc, char* argv[]) {
     size_vectors[p].nhd1_edges = ps[p].iparts[0].edgesOrdered.len;
     size_vectors[p].nhd2_nodes = ps[p].iparts[1].nodes.len;
     size_vectors[p].nhd2_cells = ps[p].iparts[1].cells.len;
-    size_vectors[p].nhd2_edges = ps[p].iparts[1].edgesOrdered.len;
-    size_vectors[p].nhd1_halo_cells = numCommonElems(&ps[p].iparts[0].cells, &ps[p].haloCells);
-    size_vectors[p].nhd1_halo_nodes = numCommonElems(&ps[p].iparts[0].nodes, &ps[p].haloNodes);
-    size_vectors[p].nhd2_halo_cells = numCommonElems(&ps[p].iparts[1].cells, &ps[p].haloCells);
-    size_vectors[p].nhd2_halo_nodes = numCommonElems(&ps[p].iparts[1].nodes, &ps[p].haloNodes);
+    size_vectors[p].nhd2_edges = ps[p].iparts[1].edgesOrdered.len; 
+    size_vectors[p].nhd1_halo_cells = numCommonElems(&ps[p].iparts[0].cells_g, &ps[p].haloCells);
+    size_vectors[p].nhd1_halo_nodes = numCommonElems(&ps[p].iparts[0].nodes_g, &ps[p].haloNodes);
+    size_vectors[p].nhd2_halo_cells = numCommonElems(&ps[p].iparts[1].cells_g, &ps[p].haloCells);
+    size_vectors[p].nhd2_halo_nodes = numCommonElems(&ps[p].iparts[1].nodes_g, &ps[p].haloNodes);
 
     //size_vectors[p].padding = 0;
     /*showSizeVector(&size_vectors[p]);*/
@@ -1289,6 +1303,11 @@ int main(int argc, char* argv[]) {
   printf("Opening device %s ... \n", device_name);
   device = max_open_device(maxfile, device_name);
   max_set_terminate_on_error(device);
+
+  if(isSimulation) {
+    max_redirect_sim_debug_output(device, "ResSim.log");
+  }
+
   printf("Setting scalar inputs gm1=%f and eps=%f, nParts=%d\n", gm1, eps, num_parts);
   max_set_scalar_input_f(device, "ResCalcKernel.gm1", gm1, FPGA_A);
   max_set_scalar_input_f(device, "ResCalcKernel.eps", eps, FPGA_A);
@@ -1299,7 +1318,11 @@ int main(int argc, char* argv[]) {
   printf("sizeof(float) = %ld\n", sizeof(float));
   printf("sizeof(size vector) = %ld\n", sizeof(*size_vectors));
 
-  uint32_t kernel_cycles = size_vectors[0].nhd1_nodes + total_edges;
+  uint32_t kernel_cycles = 0;
+  for (uint32_t i = 0; i < num_parts; ++i) {
+    kernel_cycles += ps[i].iparts[0].cells.len;
+  }
+  kernel_cycles += total_edges;
 
   printf("Running FPGA for %d cycles...\n", kernel_cycles);
 
