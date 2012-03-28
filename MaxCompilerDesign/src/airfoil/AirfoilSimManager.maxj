@@ -5,6 +5,7 @@ import com.maxeler.maxcompiler.v1.managers.MAXBoardModel;
 import com.maxeler.maxcompiler.v1.managers.custom.CustomManager;
 import com.maxeler.maxcompiler.v1.managers.custom.Stream;
 import com.maxeler.maxcompiler.v1.managers.custom.blocks.KernelBlock;
+import com.maxeler.maxcompiler.v1.managers.custom.stdlib.MemoryControlGroup.MemoryAccessPattern;
 
 public class AirfoilSimManager extends CustomManager {
 
@@ -18,10 +19,10 @@ public class AirfoilSimManager extends CustomManager {
 		Stream in_host_node = addStreamFromHost("halo_nodes");
 
 
-		Stream nodes_dram = addStreamFromHost("nodes_from_dram");
-		Stream cells_dram = addStreamFromHost("cells_from_dram");
-		Stream addresses_dram = addStreamFromHost("addresses_from_dram");
-		Stream sizes_dram = addStreamFromHost("sizes");
+		Stream nodes_dram = addStreamFromOnCardMemory("nodes_from_dram", MemoryAccessPattern.LINEAR_1D);
+		Stream cells_dram = addStreamFromOnCardMemory("cells_from_dram", MemoryAccessPattern.LINEAR_1D);
+		Stream addresses_dram = addStreamFromOnCardMemory("addresses_from_dram", MemoryAccessPattern.LINEAR_1D);
+		Stream sizes_dram = addStreamFromOnCardMemory("sizes", MemoryAccessPattern.LINEAR_1D);
 
 
 		resCalc.getInput("node_input_dram") <== nodes_dram;
@@ -34,9 +35,17 @@ public class AirfoilSimManager extends CustomManager {
 
 		Stream to_host = addStreamToHost("res");
 		to_host <== resCalc.getOutput("result_pcie");
-		Stream to_dram = addStreamToHost("to_dram");
+		Stream to_dram = addStreamToOnCardMemory("to_dram", MemoryAccessPattern.LINEAR_1D);
 		to_dram <== resCalc.getOutput("result_dram");
 
+
+		Stream fromHost = addStreamFromHost("host_to_dram");
+		Stream toDram = addStreamToOnCardMemory("write_dram", MemoryAccessPattern.LINEAR_1D);
+		toDram <== fromHost;
+
+		Stream toHost = addStreamToHost("dram_to_host");
+		Stream fromDram = addStreamFromOnCardMemory("read_dram", MemoryAccessPattern.LINEAR_1D);
+		toHost <== fromDram;
 
 		config.setAllowNonMultipleTransitions(true);//FIXME: Must remove later!!!!!!
 	}

@@ -29,6 +29,30 @@
 #include <MaxCompilerRT.h>
 #define DESIGN_NAME ResCalcSim
 max_maxfile_t* max_maxfile_init_ResCalc();
+
+int setup_linear_address_generator_body(
+  max_maxfile_t *const maxfile, max_device_handle_t *const device,
+  const max_fpga_t fpga, struct max_memory_setting *const ctx,
+  char *stream_name, char *cmd_name,
+  unsigned offset_bytes, unsigned data_length_bytes, int interrupt);
+
+int setup_linear_address_generator(
+  max_maxfile_t *const maxfile, max_device_handle_t *const device,
+  const max_fpga_t fpga, struct max_memory_setting *const ctx,
+  char *stream_name,
+  unsigned offset_bytes, unsigned data_length_bytes, int interrupt);
+
+static void* read_memory(
+  max_maxfile_t *const maxfile, max_device_handle_t *const device,
+  const max_fpga_t fpga,
+  unsigned offset_bytes, unsigned data_length_bytes);
+
+static int load_memory(
+  max_maxfile_t *const maxfile, max_device_handle_t *const device,
+  const max_fpga_t fpga, void* data,
+  unsigned offset_bytes, unsigned data_length_bytes);
+
+
 #endif
 
 #include "airfoil_kernels.h"
@@ -1313,10 +1337,82 @@ int main(int argc, char* argv[]) {
   max_set_scalar_input_f(device, "ResCalcKernel.eps", eps, FPGA_A);
   max_set_scalar_input(device, "ResCalcKernel.nParts", num_parts, FPGA_A);
 
-  printf("globalCellsScheduled.len=%d, * sizeof(*cells_scheduled)=%ld, sizeof=%ld\n", globalCellsScheduled.len, globalCellsScheduled.len * sizeof(*cells_scheduled), sizeof(*cells_scheduled));
-  printf("sizeof(*nodes_scheduled) = %ld\n", sizeof(*nodes_scheduled));
-  printf("sizeof(float) = %ld\n", sizeof(float));
-  printf("sizeof(size vector) = %ld\n", sizeof(*size_vectors));
+  printf("Padding nodes...\n");
+  int burst_len = max_group_burst_length(maxfile, "cmd_write_dram");
+  uint32_t padding_nodes = 0;
+  while (((padding_nodes + globalNodesScheduled.len) * sizeof(*nodes_scheduled)) % burst_len != 0) {
+    padding_nodes++;
+  }
+  printf("added %d padding nodes\n", padding_nodes);
+  nodes_scheduled = realloc(nodes_scheduled, (padding_nodes + globalNodesScheduled.len) * sizeof(*nodes_scheduled));
+
+  uint32_t padding_cells = 0;
+  while (((padding_cells + globalCellsScheduled.len) * sizeof(*cells_scheduled)) % burst_len != 0) {
+    padding_cells++;
+  }
+  printf("added %d padding cells\n", padding_cells);
+  cells_scheduled = realloc(cells_scheduled, (padding_cells + globalCellsScheduled.len) * sizeof(*cells_scheduled));
+
+  uint32_t padding_edges = 0;
+  while (((padding_edges + total_edges) * sizeof(*globalEdgeStructsScheduled)) % burst_len != 0) {
+    padding_edges++;
+  }
+  printf("added %d padding edges\n", padding_edges);
+  globalEdgeStructsScheduled = realloc(globalEdgeStructsScheduled, (padding_edges + total_edges) * sizeof(*globalEdgeStructsScheduled));
+
+  uint32_t padding_sizes = 0;
+  while(((num_parts + padding_sizes) * sizeof(*size_vectors)) % burst_len != 0) {
+    padding_sizes++;
+  }
+  printf("added %d padding sizes\n", padding_sizes);
+  size_vectors = realloc(size_vectors, (padding_sizes + num_parts) * sizeof(*size_vectors));
+
+  uint32_t padding_res = 0;
+  while (((globalCellsScheduled.len + padding_res) * sizeof(padding_res)) % burst_len != 0) {
+    padding_res++;
+  }
+  printf("added %d padding res cells\n", padding_res);
+
+  printf("Loading data into DRAM...\n");
+  size_t offset[5] = {0, 0, 0, 0, 0};
+  printf("Loading nodes at offset:%ld...\n", offset[0]);
+  load_memory(maxfile, device, FPGA_A, nodes_scheduled, offset[0], (padding_nodes + globalNodesScheduled.len) * sizeof(*nodes_scheduled));
+  offset[1] = offset[0] + (padding_nodes + globalNodesScheduled.len) * sizeof(*nodes_scheduled);
+  printf("Loading cells at offset:%ld...\n", offset[1]);
+  load_memory(maxfile, device, FPGA_A, cells_scheduled, offset[1], (padding_cells + globalCellsScheduled.len) * sizeof(*cells_scheduled));
+  offset[2] = offset[1] + (padding_cells + globalCellsScheduled.len) * sizeof(*cells_scheduled);
+  printf("Loading edges at offset:%ld...\n", offset[2]);
+  load_memory(maxfile, device, FPGA_A, globalEdgeStructsScheduled, offset[2], (padding_edges + total_edges) * sizeof(*globalEdgeStructsScheduled));
+  offset[3] = offset[2] + (padding_edges + total_edges) * sizeof(*globalEdgeStructsScheduled);
+  printf("Loading size vectors at offset:%ld...\n", offset[3]);
+  load_memory(maxfile, device, FPGA_A, size_vectors, offset[3], (padding_sizes + num_parts) * sizeof(*size_vectors));
+  offset[4] = offset[3] + (padding_sizes + num_parts) * sizeof(*size_vectors);
+
+  printf("Setting up memory controller...\n");
+  struct max_memory_setting *const ctx = default_max_memory_setting(maxfile);
+  if (!ctx) {
+    printf("ERROR!: Could not get default memory setting\n");
+    return 1;
+  }
+  printf("Setting up linear address generators...\n");
+  printf("Setting up nodes...\n");
+  setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "nodes_from_dram", offset[0], offset[1]-offset[0], 0);
+  printf("Setting up cells...\n");
+  setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "cells_from_dram", offset[1], offset[2]-offset[1], 0);
+  printf("Setting up edges...\n");
+  setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "addresses_from_dram", offset[2], offset[3]-offset[2], 0);
+  printf("Setting up sizes...\n");
+  setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "sizes", offset[3], offset[4]-offset[3], 0);
+  printf("Setting up cell outputs...\n");
+  setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "to_dram", offset[4], (padding_res + globalCellsScheduled.len) * sizeof(*res_non_halo), 1);
+
+  printf("Commiting memory setting to FPGA...\n");
+  int status = max_memory_commit_setting(device, ctx, FPGA_A);
+  if (status) {
+    printf("ERROR! failed commiting setting to FPGA\n");
+    return 1;
+  }
+  delete_max_memory_setting(ctx);  
 
   uint32_t kernel_cycles = 0;
   for (uint32_t i = 0; i < num_parts; ++i) {
@@ -1326,6 +1422,17 @@ int main(int argc, char* argv[]) {
 
   printf("Running FPGA for %d cycles...\n", kernel_cycles);
 
+  max_run(device,
+          max_input("halo_cells", halo_cells_scheduled, globalHaloCellsScheduled.len * sizeof(*halo_cells_scheduled)),
+          max_input("halo_nodes", halo_nodes_scheduled, globalHaloNodesScheduled.len * sizeof(*halo_nodes_scheduled)),
+          max_output("res", res_halo, globalHaloCellsScheduled.len * sizeof(*res_halo)),
+          max_runfor("ResCalcKernel", kernel_cycles),
+          max_end()
+         );
+
+  printf("Reading out DRAM data...\n");
+  res_non_halo = read_memory(maxfile, device, FPGA_A, offset[4], (globalCellsScheduled.len + padding_res) * sizeof(*res_non_halo));
+/*
   max_run(device,
           max_input("nodes_from_dram", nodes_scheduled, globalNodesScheduled.len * sizeof(*nodes_scheduled)),
           max_input("cells_from_dram", cells_scheduled, globalCellsScheduled.len * sizeof(*cells_scheduled)),
@@ -1337,14 +1444,182 @@ int main(int argc, char* argv[]) {
           max_output("res", res_halo, globalHaloCellsScheduled.len * sizeof(*res_halo)),
           max_runfor("ResCalcKernel", kernel_cycles),
           max_end()
-         );  
-
+         );
+*/
   printf("Closing device %s ... \n", device_name);
   max_close_device(device);
   printf("Destroying maxfile ... \n");
   max_destroy(maxfile);
   #endif 
-
-
   
 }
+
+#ifdef RUN_FPGA
+/*********************************************
+ * Implementation of memory access functions *
+ *********************************************/
+
+/*
+ * This function does the actual creation of an address generator.
+ */
+int setup_linear_address_generator_body(
+    max_maxfile_t *const maxfile,
+    max_device_handle_t *const device,
+    const max_fpga_t fpga,
+    struct max_memory_setting *const ctx,
+    char *stream_name,
+    char *cmd_name,
+    unsigned offset_bytes,
+    unsigned data_length_bytes,
+    int interrupt)
+{
+
+  // Get the length of bursts from the memory controller
+  const int burst_len_in = max_group_burst_length(maxfile, cmd_name);
+  printf("burst len:%d, data_length_bytes: %d\n", burst_len_in, data_length_bytes);
+  if (data_length_bytes%burst_len_in !=0)
+  {
+    fprintf(stderr, "data_length_bytes must be a multiple of burst length(%d) failed: %s\n", burst_len_in, stream_name);
+    abort();
+  }
+
+  // Convert data length and offset from bytes to bursts
+  int bursts = data_length_bytes/burst_len_in;
+  int offset_bursts = offset_bytes/burst_len_in;
+
+  int r = max_memory_stream_set_access_pattern_linear1d (ctx, cmd_name, bursts, 0, bursts);
+
+  if (r)
+  {
+    fprintf(stderr, "max_memory_stream_set_access_pattern_linear1d(%s) failed: %d\n", cmd_name, r);
+    abort();
+  }
+
+  r = max_memory_stream_set_start_address(ctx, stream_name, offset_bursts);
+  if (r)
+  {
+    fprintf(stderr, "max_memory_stream_set_start_address(%s) failed: %d\n", stream_name, r);
+    abort();
+  }
+
+  r = max_memory_stream_set_enable(ctx, stream_name, 1);
+  if (r)
+  {
+    fprintf(stderr, "max_memory_stream_set_enable(%s) failed: %d\n", stream_name, r);
+    abort();
+  }
+
+  if (interrupt)
+    max_memory_stream_interrupt_on(ctx, stream_name, NULL);
+
+  return 0;
+}
+
+int setup_linear_address_generator(
+    max_maxfile_t *const maxfile,
+    max_device_handle_t *const device,
+    const max_fpga_t fpga,
+    struct max_memory_setting *const ctx,
+    char *stream_name,
+    unsigned offset_bytes,
+    unsigned size_bytes,
+    int interrupt)
+{
+  /*
+   * The memory controller settings require a command name,
+   * which is the stream name with "cmd_" prepended.
+   */
+  char *cmd_name = (char *)calloc(4 + strlen(stream_name) + 1,
+              sizeof(char));
+  strcat(cmd_name, "cmd_");
+  strcat(cmd_name, stream_name);
+
+  setup_linear_address_generator_body(maxfile, device,
+      fpga, ctx, stream_name, cmd_name,
+      offset_bytes, size_bytes, interrupt);
+
+  free(cmd_name);
+  return 0;
+}
+
+static void* read_memory(max_maxfile_t *const maxfile,
+            max_device_handle_t *const device,
+            const max_fpga_t fpga,
+            unsigned offset_bytes,
+            unsigned data_length_bytes)
+{
+  // setup address generator
+  struct max_memory_setting *const ctx =
+      new_max_memory_setting(maxfile);
+  if (!ctx)
+  {
+    fputs("new_max_memory_setting() failed\n", stderr);
+    abort();
+  }
+
+  setup_linear_address_generator_body(maxfile, device, fpga, ctx, "read_dram", "cmd_read_dram", offset_bytes, data_length_bytes, 0);
+
+  int r = max_memory_commit_setting(device, ctx, FPGA_A);
+  if (r)
+  {
+    fprintf(stderr, "max_memory_commit_setting() failed(read_dram): %d\n", r);
+    abort();
+  }
+
+  delete_max_memory_setting(ctx);
+
+  max_reset_device(device);
+
+  uint32_t *const data_out = malloc(data_length_bytes);
+
+  unsigned int i;
+  for (i = 0; i < (data_length_bytes/sizeof(uint32_t)); ++i)
+    data_out[i] = 0;
+
+  max_stream_handle_t *const to_host =
+      max_get_pcie_stream(device, "dram_to_host");
+  max_queue_pcie_stream(device, to_host, data_out, data_length_bytes, 1);
+  max_sync_pcie_stream(device, to_host);
+
+  return data_out;
+}
+
+static int load_memory(
+    max_maxfile_t *const maxfile,
+    max_device_handle_t *const device,
+    const max_fpga_t fpga,
+    void* data,
+    unsigned offset_bytes,
+    unsigned data_length_bytes)
+{
+  struct max_memory_setting *const ctx =
+      new_max_memory_setting(maxfile);
+
+  if (!ctx)
+  {
+    fputs("new_max_memory_setting() failed\n", stderr);
+    abort();
+  }
+
+  setup_linear_address_generator_body(maxfile, device, fpga, ctx, "write_dram", "cmd_write_dram", offset_bytes, data_length_bytes, 1);
+
+  int r = max_memory_commit_setting(device, ctx, FPGA_A);
+  if (r)
+  {
+    fprintf(stderr, "max_memory_commit_setting() failed(write_dram): %d\n", r);
+    abort();
+  }
+
+  delete_max_memory_setting(ctx);
+
+  max_reset_device(device);
+
+  max_stream_handle_t *const from_host =
+      max_get_pcie_stream(device, "host_to_dram");
+  max_queue_pcie_stream(device, from_host, data, data_length_bytes, 1);
+  max_sync_pcie_stream(device, from_host);
+
+  max_wait_for_interrupt(device, fpga);
+  return data_length_bytes;
+}
+#endif

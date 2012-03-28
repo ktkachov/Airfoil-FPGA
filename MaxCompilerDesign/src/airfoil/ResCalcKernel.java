@@ -58,10 +58,10 @@ public class ResCalcKernel extends Kernel {
 
 	private final KStructType address_struct_t
 		= new KStructType(
-				KStructType.sft("node1", hwUInt(addr_width)),
-				KStructType.sft("node2", hwUInt(addr_width)),
-				KStructType.sft("cell1", hwUInt(addr_width)),
-				KStructType.sft("cell2", hwUInt(addr_width)),
+				KStructType.sft("node1", addr_t),
+				KStructType.sft("node2", addr_t),
+				KStructType.sft("cell1", addr_t),
+				KStructType.sft("cell2", addr_t),
 				KStructType.sft("padding", hwUInt(8))
 		);
 
