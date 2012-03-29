@@ -115,7 +115,7 @@ public class ResCalcKernel extends Kernel {
 
 		final int sizes_lat = 5;
 		final int halo_io_delay = 7;
-		SMIO control_sm = addStateMachine("io_control_sm", new ResControlSM(this, addr_width, halo_io_delay, sizes_lat));
+		SMIO control_sm = addStateMachine("io_control_sm", new ResControlSM(this, addr_width, halo_io_delay, sizes_lat, arithmeticPipelineLatency));
 		control_sm.connectInput("nParts", nParts);
 		control_sm.connectInput("cells", (HWVar) sizes.get("cells"));
 		control_sm.connectInput("edges", (HWVar) sizes.get("edges"));
@@ -135,16 +135,17 @@ public class ResCalcKernel extends Kernel {
 		control_sm.connectInput("nhd2_halo_nodes", (HWVar) sizes.get("nhd2_halo_nodes"));
 		control_sm.connectInput("nhd2_halo_cells", (HWVar) sizes.get("nhd2_halo_cells"));
 
-		HWVar read_cell = control_sm.getOutput("read_cell");
-		HWVar read_node = control_sm.getOutput("read_node");
-		HWVar read_edge = control_sm.getOutput("read_edge");
+		HWVar valid_partition = (HWVar)sizes["nodes"] !== 0;
+		HWVar read_cell = control_sm.getOutput("read_cell") & valid_partition;
+		HWVar read_node = control_sm.getOutput("read_node") & valid_partition;
+		HWVar read_edge = control_sm.getOutput("read_edge") & valid_partition;
 		HWVar read_sizes = control_sm.getOutput("read_sizes");
 
 		HWVar processing = control_sm.getOutput("processing");
 		HWVar output_data = control_sm.getOutput("writing");
 		HWVar output_halo = control_sm.getOutput("writing_halo");
-		HWVar read_host_halo_cell = control_sm.getOutput("halo_read_cell");
-		HWVar read_host_halo_node = control_sm.getOutput("halo_read_node");
+		HWVar read_host_halo_cell = control_sm.getOutput("halo_read_cell") & valid_partition;
+		HWVar read_host_halo_node = control_sm.getOutput("halo_read_node") & valid_partition;
 
 		debug.printf("rCell:%d, rNode:%d, rEdge:%d, rSizes:%d, processing:%d, writing:%d, wHalo:%d, readHCell:%d, readHNode:%d\n",
 				read_cell, read_node, read_edge, read_sizes, processing, output_data, output_halo, read_host_halo_cell, read_host_halo_node);
@@ -164,6 +165,30 @@ public class ResCalcKernel extends Kernel {
 		KStruct edge = io.input("addresses", address_struct_t, read_edge);
 		KStruct cell_data_host = io.input("input_host_cell", cell_struct_t, read_host_halo_cell);
 		KStruct node_data_host = io.input("input_host_node", node_struct_t, read_host_halo_node);
+
+		Count.Params edge_count_params = control.count.makeParams(48).withEnable(read_edge);
+		Counter edge_count = control.count.makeCounter(edge_count_params);
+		debug.printf(read_edge, "processing edge number:%d\n", edge_count.getCount());
+
+		Count.Params cell_count_params = control.count.makeParams(48).withEnable(read_cell);
+		Counter cell_count = control.count.makeCounter(cell_count_params);
+		debug.printf("read in %d cells from dram\n", cell_count.getCount());
+
+		Count.Params node_count_params = control.count.makeParams(48).withEnable(read_node);
+		Counter node_count = control.count.makeCounter(node_count_params);
+		debug.printf("read in %d nodes from dram\n", node_count.getCount());
+
+		Count.Params write_cell_count_params = control.count.makeParams(48).withEnable(output_data);
+		Counter write_cell_count = control.count.makeCounter(write_cell_count_params);
+		debug.printf("wrote back in %d cells to dram\n", write_cell_count.getCount());
+
+		Count.Params read_halo_cell_count_params = control.count.makeParams(48).withEnable(read_host_halo_cell);
+		Counter read_halo_cell_count = control.count.makeCounter(read_halo_cell_count_params);
+		debug.printf("read in %d halo cells from PCIe\n", read_halo_cell_count.getCount());
+
+		Count.Params write_halo_cell_count_params = control.count.makeParams(48).withEnable(output_halo);
+		Counter write_halo_cell_count = control.count.makeCounter(write_halo_cell_count_params);
+		debug.printf("wrote back %d halo cells to PCIe\n", write_halo_cell_count.getCount());
 
 		HWVar gm1 = io.scalarInput("gm1", arith_t);
 		HWVar eps = io.scalarInput("eps", arith_t);
@@ -418,11 +443,12 @@ public class ResCalcKernel extends Kernel {
 				.withDataIn(zeroes)
 				.withWriteEnable(output_data)
 				;
-		DualPortMemOutputs<KArray<HWVar>> res_ram1_output = mem.ramDualPort(max_partition_size, RamWriteMode.READ_FIRST, res_ram1_portA_params, res_ram1_portB_params);
+		DualPortMemOutputs<KArray<HWVar>> res_ram1_output
+			= mem.ramDualPort(max_partition_size, RamWriteMode.READ_FIRST, res_ram1_portA_params, res_ram1_portB_params);
 
 
 		Mem.RamPortParams<KArray<HWVar>> res_ram2_portA_params
-		= mem.makeRamPortParams(RamPortMode.READ_WRITE, cell2_addr.cast(addr_t), array4_t)
+			= mem.makeRamPortParams(RamPortMode.READ_WRITE, cell2_addr.cast(addr_t), array4_t)
 			.withDataIn(new_res_value_cell2)
 			.withWriteEnable(~isCell2Halo & processing & ~isNoopEdge)
 		;
@@ -431,7 +457,8 @@ public class ResCalcKernel extends Kernel {
 				.withDataIn(zeroes)
 				.withWriteEnable(output_data)
 				;
-		DualPortMemOutputs<KArray<HWVar>> res_ram2_output = mem.ramDualPort(max_partition_size, RamWriteMode.READ_FIRST, res_ram2_portA_params, res_ram2_portB_params);
+		DualPortMemOutputs<KArray<HWVar>> res_ram2_output
+			= mem.ramDualPort(max_partition_size, RamWriteMode.READ_FIRST, res_ram2_portA_params, res_ram2_portB_params);
 
 
 

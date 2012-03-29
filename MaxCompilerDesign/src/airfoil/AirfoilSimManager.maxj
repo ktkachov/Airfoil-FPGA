@@ -47,7 +47,7 @@ public class AirfoilSimManager extends CustomManager {
 		Stream fromDram = addStreamFromOnCardMemory("read_dram", MemoryAccessPattern.LINEAR_1D);
 		toHost <== fromDram;
 
-		config.setAllowNonMultipleTransitions(true);//FIXME: Must remove later!!!!!!
+//		config.setAllowNonMultipleTransitions(true);//FIXME: Must remove later!!!!!!
 	}
 
 }

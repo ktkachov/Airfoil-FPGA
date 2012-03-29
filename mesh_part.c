@@ -72,8 +72,8 @@ static int load_memory(
 #define ADDR_T 14
 
 #define NOP_EDGE UINT_MAX
-/*colourNames is used to create a DOT file that dumps graphs in a renderable format*/
 
+/*colourNames is used to create a DOT file that dumps graphs in a renderable format*/
 float gam;
 float gm1;
 float cfl;
@@ -1187,10 +1187,6 @@ int main(int argc, char* argv[]) {
   }
 
 
-
-
-
-
   float h2nhCells = (float)total_halo_cells / (ncell - total_halo_cells);
   printf("Colouring partition graph...\n");
   colourGraph(pg);
@@ -1289,7 +1285,10 @@ int main(int argc, char* argv[]) {
     halo_cells_scheduled[i].q2 = q[4*globalHaloCellsScheduled.arr[i] + 2];
     halo_cells_scheduled[i].q3 = q[4*globalHaloCellsScheduled.arr[i] + 3];
 
-   halo_cells_scheduled[i].adt = adt[globalHaloCellsScheduled.arr[i]];
+    halo_cells_scheduled[i].adt = adt[globalHaloCellsScheduled.arr[i]];
+    for (short j = 0; j < 3; ++j) {
+      halo_cells_scheduled[i].padding[j] = 0;
+    }
   }
   float* halo_x_scheduled;
   node_struct* halo_nodes_scheduled;
@@ -1337,7 +1336,7 @@ int main(int argc, char* argv[]) {
   max_set_scalar_input_f(device, "ResCalcKernel.eps", eps, FPGA_A);
   max_set_scalar_input(device, "ResCalcKernel.nParts", num_parts, FPGA_A);
 
-  printf("Padding nodes...\n");
+  printf("Padding data sets...\n");
   int burst_len = max_group_burst_length(maxfile, "cmd_write_dram");
   uint32_t padding_nodes = 0;
   while (((padding_nodes + globalNodesScheduled.len) * sizeof(*nodes_scheduled)) % burst_len != 0) {
@@ -1419,6 +1418,7 @@ int main(int argc, char* argv[]) {
     kernel_cycles += ps[i].iparts[0].cells.len;
   }
   kernel_cycles += total_edges;
+  kernel_cycles += 3 * num_parts * 25;
 
   printf("Running FPGA for %d cycles...\n", kernel_cycles);
 

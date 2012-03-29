@@ -35,8 +35,16 @@ public class AirfoilManager extends CustomManager {
 		Stream to_dram = addStreamToOnCardMemory("to_dram", MemoryAccessPattern.LINEAR_1D);
 		to_dram <== resCalc.getOutput("result_dram");
 
+		Stream fromHost = addStreamFromHost("host_to_dram");
+		Stream toDram = addStreamToOnCardMemory("write_dram", MemoryAccessPattern.LINEAR_1D);
+		toDram <== fromHost;
 
-		config.setAllowNonMultipleTransitions(true);//FIXME: Must remove later!!!!!!
+		Stream toHost = addStreamToHost("dram_to_host");
+		Stream fromDram = addStreamFromOnCardMemory("read_dram", MemoryAccessPattern.LINEAR_1D);
+		toHost <== fromDram;
+
+
+//		config.setAllowNonMultipleTransitions(true);//FIXME: Must remove later!!!!!!
 	}
 
 

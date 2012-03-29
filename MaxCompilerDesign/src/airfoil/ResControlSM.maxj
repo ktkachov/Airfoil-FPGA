@@ -215,13 +215,18 @@ public class ResControlSM extends KernelStateMachine {
 
 	private final int lat;
 	private final SMStateValue cycle_count;
+	private final int arith_delay;
+	private final SMStateValue arith_delay_count;
 
-	public ResControlSM(KernelLib owner, int width, int halo_delay, int lat) {
+	public ResControlSM(KernelLib owner, int width, int halo_delay, int lat, int arith_delay) {
 		super(owner);
 		this.addr_width 		= width;
+		this.arith_delay 		= arith_delay;
 		this.lat = lat;
 		SMValueType addr_t 		= smUInt(addr_width);
 		this.halo_io_delay		= halo_delay;
+
+		arith_delay_count		= state.value(addr_t, 0);
 		halo_read_delay_count 	= state.value(smUInt(width), 0);
 		read_sizes				= state.value(smBool(), true);
 		halo_write_delay_count	= state.value(addr_t, 0);
@@ -256,7 +261,7 @@ public class ResControlSM extends KernelStateMachine {
 		writing 		= io.output("writing", smBool());
 		halo_read_cell 	= io.output("halo_read_cell", smBool());
 		halo_read_node	= io.output("halo_read_node", smBool());
-		read_sizes_out 		= io.output("read_sizes", smBool());
+		read_sizes_out 	= io.output("read_sizes", smBool());
 		read_edge 		= io.output("read_edge", smBool());
 		read_cell		= io.output("read_cell", smBool());
 		read_node 		= io.output("read_node", smBool());
@@ -316,6 +321,27 @@ public class ResControlSM extends KernelStateMachine {
 
 	}
 
+	private void resetCounts(Counts c) {
+		c.cells_stream_in.next <== 0;
+		c.nhd1_nodes.next <== 0;
+		c.nhd2_cells.next <== 0;
+		c.nhd2_nodes.next <== 0;
+		c.part1_edges.next <== 0;
+		c.part1_halo_cells_stream_in.next <== 0;
+		c.part1_halo_nodes_stream_in.next <== 0;
+		c.part1_non_halo_cells_stream_in.next <== 0;
+		c.part1_non_halo_cells_stream_out.next <== 0;
+		c.part1_halo_cells_stream_out.next <== 0;
+		c.part1_non_halo_nodes_stream_in.next <== 0;
+		c.part2_edges.next <== 0;
+		c.part2_halo_cells_stream_in.next <== 0;
+		c.part2_halo_cells_stream_out.next <== 0;
+		c.part2_halo_nodes_stream_in.next <== 0;
+		c.part2_non_halo_cells_stream_in.next <== 0;
+		c.part2_non_halo_cells_stream_out.next <== 0;
+		c.part2_non_halo_nodes_stream_in.next <== 0;
+	}
+
 	private void readInSizes(Sizes s, Counts c) {
 		debug.printf("reading sizes: cycle:%d, nodes:%d\n", cycle_count, nodes_in);
 		s.cells.next <== cells_in;
@@ -344,26 +370,13 @@ public class ResControlSM extends KernelStateMachine {
 		s.nhd2_non_halo_nodes.next <== nhd2_nodes_in - nhd2_halo_nodes_in;
 		s.iph_halo_cells.next <== halo_cells_in - nhd1_halo_cells_in - nhd2_halo_cells_in;
 		s.iph_halo_nodes.next <== halo_nodes_in - nhd1_halo_nodes_in - nhd2_halo_nodes_in;
+
+		debug.printf("iph_cells_in:%d, halo_cells_in:%d, nhd1_halo_cells_in:%d, nhd2_halo_cells_in:%d\n",
+				iph_cells_in, halo_cells_in, nhd1_halo_cells_in, nhd2_halo_cells_in);
 		s.iph_non_halo_cells.next <== iph_cells_in - (halo_cells_in - nhd1_halo_cells_in - nhd2_halo_cells_in);
 		s.iph_non_halo_nodes.next <== iph_nodes_in - (halo_nodes_in - nhd1_halo_nodes_in - nhd2_halo_nodes_in);
 
-		c.cells_stream_in.next <== 0;
-		c.nhd1_nodes.next <== 0;
-		c.nhd2_cells.next <== 0;
-		c.nhd2_nodes.next <== 0;
-		c.part1_edges.next <== 0;
-		c.part1_halo_cells_stream_in.next <== 0;
-		c.part1_halo_nodes_stream_in.next <== 0;
-		c.part1_non_halo_cells_stream_in.next <== 0;
-		c.part1_non_halo_cells_stream_out.next <== 0;
-		c.part1_non_halo_nodes_stream_in.next <== 0;
-		c.part2_edges.next <== 0;
-		c.part2_halo_cells_stream_in.next <== 0;
-		c.part2_halo_cells_stream_out.next <== 0;
-		c.part2_halo_nodes_stream_in.next <== 0;
-		c.part2_non_halo_cells_stream_in.next <== 0;
-		c.part2_non_halo_cells_stream_out.next <== 0;
-		c.part2_non_halo_nodes_stream_in.next <== 0;
+		resetCounts(c);
 	}
 
 	private SMValue streamInNhd1IhdFinished() {
@@ -437,7 +450,7 @@ public class ResControlSM extends KernelStateMachine {
 			}
 		}
 
-		IF (partition_count !== 0) {
+		IF (partition_count !== 1) {
 
 			IF (counts.part2_non_halo_cells_stream_out < sizes.nhd2_non_halo_cells + sizes.iph_non_halo_cells) {
 				counts.part2_non_halo_cells_stream_out.next <== counts.part2_non_halo_cells_stream_out + 1;
@@ -504,19 +517,29 @@ public class ResControlSM extends KernelStateMachine {
 
 		SWITCH (st) {
 			CASE (0) {
-				IF (partition_count === 0) {
+				IF (partition_count === 1) {
 					IF (streamInNhd1IhdFinished()) {
-						st.next <== 1;
-						halo_read_delay_count.next <== 0;
-						halo_write_delay_count.next <== 0;
+						IF (arith_delay_count === arith_delay) {
+							st.next <== 1;
+							halo_read_delay_count.next <== 0;
+							halo_write_delay_count.next <== 0;
+							arith_delay_count.next <== 0;
+						} ELSE {
+							arith_delay_count.next <== arith_delay_count + 1;
+						}
 					} ELSE {
 						updateCountsState0();
 					}
 				} ELSE {
 					IF (streamInNhd1IhdFinished() & streamOutNhd2IhdFinished()) {
-						st.next <== 1;
-						halo_read_delay_count.next <== 0;
-						halo_write_delay_count.next <== 0;
+						IF (arith_delay_count === arith_delay) {
+							arith_delay_count.next <== 0;
+							st.next <== 1;
+							halo_read_delay_count.next <== 0;
+							halo_write_delay_count.next <== 0;
+						} ELSE {
+							arith_delay_count.next <== arith_delay_count + 1;
+						}
 					} ELSE {
 						updateCountsState0();
 					}
@@ -525,20 +548,36 @@ public class ResControlSM extends KernelStateMachine {
 
 			CASE (1) {
 				IF (processNhd1IhdFinished() & streamInNhd2Finished()) {
-					st.next <== 2;
-					halo_read_delay_count.next <== 0;
-					halo_write_delay_count.next <== 0;
+					IF (arith_delay_count === arith_delay) {
+						arith_delay_count.next <== 0;
+						st.next <== 2;
+						halo_read_delay_count.next <== 0;
+						halo_write_delay_count.next <== 0;
+					} ELSE {
+						arith_delay_count.next <== arith_delay_count + 1;
+					}
 				} ELSE {
 					updateCountsState1();
 				}
 			}
 
 			CASE (2) {
-				IF (processNhd2IhdFinished() & streamOutNhd1Finished()) {
-					st.next <== 3;
+				IF (partition_count === nParts) {
+					st.next <== 0;
 					lat_del_count.next <== 0;
-				} ELSE {
-					updateCountsState2();
+				} ELSE{
+					IF (processNhd2IhdFinished() & streamOutNhd1Finished()) {
+						IF (arith_delay_count === arith_delay) {
+							st.next <== 3;
+							lat_del_count.next <== 0;
+							arith_delay_count.next <== 0;
+						} ELSE {
+							arith_delay_count.next <== arith_delay_count + 1;
+
+						}
+					} ELSE {
+						updateCountsState2();
+					}
 				}
 			}
 
@@ -569,7 +608,12 @@ public class ResControlSM extends KernelStateMachine {
 
 	@Override
 		public void outputFunction() {
-			debug.printf("cycle: %d | nodes:%d | pCount:%d | state:%d, lat_count:%d \n",cycle_count, sizes.nodes, partition_count, st, lat_del_count);
+			debug.printf("cycle: %d | nodes:%d | pCount:%d | state:%d | lat_count:%d | iph_non_halo_cells:%d\n",
+					cycle_count, sizes.nodes, partition_count, st, lat_del_count, sizes.iph_non_halo_cells);
+
+			debug.printf("iph_cells_in:%d, halo_cells_in:%d, nhd1_halo_cells_in:%d, nhd2_halo_cells_in:%d\n",
+					iph_cells_in, halo_cells_in, nhd1_halo_cells_in, nhd2_halo_cells_in);
+
 			SWITCH (st) {
 				CASE (0) {
 					processing <== false;
@@ -578,13 +622,21 @@ public class ResControlSM extends KernelStateMachine {
 						writing_halo <== false;
 					} ELSE {
 						writing <== counts.part2_non_halo_cells_stream_out < sizes.nhd2_non_halo_cells + sizes.iph_non_halo_cells;
-						writing_halo <== counts.part2_halo_cells_stream_out < sizes.nhd2_halo_cells + sizes.iph_halo_cells & halo_write_delay_count === 0;
+						writing_halo <== (counts.part2_halo_cells_stream_out < sizes.nhd2_halo_cells + sizes.iph_halo_cells)
+										& (halo_write_delay_count === halo_io_delay);
 					}
-					halo_read_cell <== counts.part1_halo_cells_stream_in < sizes.nhd1_halo_cells + sizes.iph_halo_cells & halo_read_delay_count === 0;
-					halo_read_node <== counts.part1_halo_nodes_stream_in < sizes.nhd1_halo_nodes + sizes.iph_halo_nodes & halo_read_delay_count === 0;
+					halo_read_cell <== (counts.part1_halo_cells_stream_in < sizes.nhd1_halo_cells + sizes.iph_halo_cells)
+									& (halo_read_delay_count === halo_io_delay);
+					halo_read_node <== (counts.part1_halo_nodes_stream_in < sizes.nhd1_halo_nodes + sizes.iph_halo_nodes)
+									& (halo_read_delay_count === halo_io_delay);
 					read_edge <== false;
-					read_cell <== counts.part1_non_halo_cells_stream_in < sizes.nhd1_non_halo_cells + sizes.iph_non_halo_cells;
-					read_node <== counts.part1_non_halo_nodes_stream_in < sizes.nhd1_non_halo_nodes + sizes.iph_non_halo_nodes;
+					IF (partition_count < nParts) {
+						read_cell <== (counts.part1_non_halo_cells_stream_in < sizes.nhd1_non_halo_cells + sizes.iph_non_halo_cells);
+						read_node <== (counts.part1_non_halo_nodes_stream_in < sizes.nhd1_non_halo_nodes + sizes.iph_non_halo_nodes);
+					} ELSE {
+						read_cell <== false;
+						read_node <== false;
+					}
 					read_sizes_out <== false;
 				}
 
@@ -592,8 +644,8 @@ public class ResControlSM extends KernelStateMachine {
 					processing <== ~processNhd1IhdFinished();
 					writing <== false;
 					writing_halo <== false;
-					halo_read_cell <== counts.part2_halo_cells_stream_in < sizes.nhd2_halo_cells & halo_read_delay_count === 0;
-					halo_read_node <== counts.part2_halo_nodes_stream_in < sizes.nhd2_halo_nodes & halo_read_delay_count === 0;
+					halo_read_cell <== (counts.part2_halo_cells_stream_in < sizes.nhd2_halo_cells) & (halo_read_delay_count === halo_io_delay);
+					halo_read_node <== (counts.part2_halo_nodes_stream_in < sizes.nhd2_halo_nodes) & (halo_read_delay_count === halo_io_delay);
 					read_edge <== ~processNhd1IhdFinished();
 					read_cell <== counts.part2_non_halo_cells_stream_in < sizes.nhd2_non_halo_cells;
 					read_node <== counts.part2_non_halo_nodes_stream_in < sizes.nhd2_non_halo_nodes;
@@ -602,8 +654,13 @@ public class ResControlSM extends KernelStateMachine {
 
 				CASE (2) {
 					processing <== ~processNhd2IhdFinished();
+					debug.printf("State2: ~processFinished:%d\n", ~processNhd2IhdFinished());
 					writing <== counts.part1_non_halo_cells_stream_out < sizes.nhd1_non_halo_cells;
-					writing_halo <== counts.part1_halo_cells_stream_out < sizes.nhd1_halo_cells & halo_write_delay_count === 0;
+					debug.printf("part1_non_halo_cells_stream_out: %d, nhd1_non_halo_cells:%d\n",
+							counts.part1_non_halo_cells_stream_out, sizes.nhd1_non_halo_cells);
+
+					writing_halo <== counts.part1_halo_cells_stream_out < sizes.nhd1_halo_cells & halo_write_delay_count === halo_io_delay;
+					debug.printf("part1_halo_cells_out:%d, nhd1_halo_cells:%d\n", counts.part1_halo_cells_stream_out, sizes.nhd1_halo_cells);
 					halo_read_cell <== false;
 					halo_read_node <== false;
 					read_edge <== ~processNhd2IhdFinished();
@@ -621,7 +678,7 @@ public class ResControlSM extends KernelStateMachine {
 					read_edge <== false;
 					read_cell <== false;
 					read_node <== false;
-					read_sizes_out <== read_sizes & partition_count < nParts;
+					read_sizes_out <== read_sizes & partition_count <= nParts;
 				}
 				OTHERWISE {
 
