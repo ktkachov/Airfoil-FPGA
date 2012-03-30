@@ -1203,7 +1203,7 @@ int main(int argc, char* argv[]) {
   const char* fileName = "meshColoured.dot";
   printf("Writing partition graph to %s ...\n", fileName);
   generateDotGraph(pg, fileName, ps);
- 
+
    const char* schFileName = "meshSchedule.dot";
   printf("Writing schedule graph to %s ...\n", schFileName);
   generateScheduleDotGraph(glPartsSched, num_parts, schFileName);
@@ -1218,7 +1218,7 @@ int main(int argc, char* argv[]) {
   printf("time taken: %f seconds\n", (float)(end - start)/CLOCKS_PER_SEC);
 
 
-  
+
   gam = 1.4f;
   gm1 = gam - 1.0f;
   cfl = 0.9f;
@@ -1241,7 +1241,7 @@ int main(int argc, char* argv[]) {
     for (long m=0; m<4; m++) {
         q[4*n+m] = qinf[m];
       res[4*n+m] = 0.0f;
-      
+
     }
   }
 
@@ -1249,11 +1249,11 @@ int main(int argc, char* argv[]) {
   for (uint32_t i = 0; i < ncell; ++i) {
     save_soln(&q[4*i], &qold[4*i]);
   }
-  
+
   for (uint32_t i = 0; i < ncell; ++i) {
     adt_calc(&x[2*cell[4*i]], &x[2*cell[4*i+1]], &x[2*cell[4*i+2]], &x[2*cell[4*i+3]], &q[4*i], &adt[i]);
   }
-  
+
   printf("Scheduling data arrays...\n\n");
   cell_struct* cells_scheduled;
   posix_memalign((void**)&cells_scheduled, 16, globalCellsScheduled.len * sizeof(*cells_scheduled));
@@ -1331,11 +1331,6 @@ int main(int argc, char* argv[]) {
     max_redirect_sim_debug_output(device, "ResSim.log");
   }
 
-  printf("Setting scalar inputs gm1=%f and eps=%f, nParts=%d\n", gm1, eps, num_parts);
-  max_set_scalar_input_f(device, "ResCalcKernel.gm1", gm1, FPGA_A);
-  max_set_scalar_input_f(device, "ResCalcKernel.eps", eps, FPGA_A);
-  max_set_scalar_input(device, "ResCalcKernel.nParts", num_parts, FPGA_A);
-
   printf("Padding data sets...\n");
   int burst_len = max_group_burst_length(maxfile, "cmd_write_dram");
   uint32_t padding_nodes = 0;
@@ -1411,7 +1406,7 @@ int main(int argc, char* argv[]) {
     printf("ERROR! failed commiting setting to FPGA\n");
     return 1;
   }
-  delete_max_memory_setting(ctx);  
+  delete_max_memory_setting(ctx);
 
   uint32_t kernel_cycles = 0;
   for (uint32_t i = 0; i < num_parts; ++i) {
@@ -1420,6 +1415,15 @@ int main(int argc, char* argv[]) {
   kernel_cycles += total_edges;
   kernel_cycles += 3 * num_parts * 25;
 
+  printf("Setting scalar inputs gm1=%f and eps=%f, nParts=%d\n", gm1, eps, num_parts);
+  max_set_scalar_input_f(device, "ResCalcKernel.gm1", gm1, FPGA_A);
+  max_set_scalar_input_f(device, "ResCalcKernel.eps", eps, FPGA_A);
+  max_set_scalar_input(device, "ResCalcKernel.nParts", num_parts, FPGA_A);
+  max_set_scalar_input(device, "ResCalcKernel.numHaloCells", globalHaloCellsScheduled.len, FPGA_A);
+
+  printf("Halo cells scheduled: %d\n", globalHaloCellsScheduled.len);
+  printf("Halo nodes scheduled: %d\n", globalHaloNodesScheduled.len);
+  printf("Expecting %d halo cells as output\n", globalHaloCellsScheduled.len);
   printf("Running FPGA for %d cycles...\n", kernel_cycles);
 
   max_run(device,
