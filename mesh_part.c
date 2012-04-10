@@ -1317,7 +1317,11 @@ int main(int argc, char* argv[]) {
 */
   #ifdef RUN_FPGA
   short isSimulation = 1;
-  char* device_name = isSimulation ? "sim0:sim" : "/dev/maxeler0";
+  if (argc != 2) {
+    printf("ERROR: needed device name\n");
+    return 1;
+  }
+  char* device_name = argv[1];
   max_maxfile_t* maxfile;
   max_device_handle_t* device;
 
@@ -1327,8 +1331,10 @@ int main(int argc, char* argv[]) {
   device = max_open_device(maxfile, device_name);
   max_set_terminate_on_error(device);
 
+  const char* logFile = "/tmp/ResSim.log";
   if(isSimulation) {
-    max_redirect_sim_debug_output(device, "ResSim.log");
+    printf("Writing simulation log to %s\n", logFile);
+    max_redirect_sim_debug_output(device, logFile);
   }
 
   printf("Padding data sets...\n");

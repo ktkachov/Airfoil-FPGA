@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
-
+simName="simAirfoil"
 make mesh_fpga
-maxcompilersim stop
-maxcompilersim -c MAX3424A start
-./mesh_fpga
-maxcompilersim stop
+maxcompilersim -n $simName stop
+maxcompilersim -n $simName -c MAX3424A start
+./mesh_fpga ${simName}0:${simName}
+maxcompilersim -n $simName stop
