@@ -117,7 +117,7 @@ public class ResCalcKernel extends Kernel {
 		HWVar nParts = io.scalarInput("nParts", addr_t);
 
 
-		final int sizes_lat = 6;
+		final int sizes_lat = 7;
 		final int halo_io_delay = 6;
 
 		HWVar kernel_running = total_count > sizes_lat;

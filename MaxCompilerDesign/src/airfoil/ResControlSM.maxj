@@ -214,16 +214,16 @@ public class ResControlSM extends KernelStateMachine {
 	private final SMInput nParts;
 	private final SMInput kernel_running;
 
-	private final int lat;
+	private final int sizes_lat;
 	private final SMStateValue cycle_count;
 	private final int arith_delay;
 	private final SMStateValue arith_delay_count;
 
-	public ResControlSM(KernelLib owner, int width, int halo_delay, int lat, int arith_delay) {
+	public ResControlSM(KernelLib owner, int width, int halo_delay, int sizes_lat, int arith_delay) {
 		super(owner);
 		this.addr_width 		= width;
 		this.arith_delay 		= arith_delay;
-		this.lat = lat;
+		this.sizes_lat 			= sizes_lat;
 		SMValueType addr_t 		= smUInt(addr_width);
 		this.halo_io_delay		= halo_delay;
 
@@ -380,7 +380,6 @@ public class ResControlSM extends KernelStateMachine {
 		s.iph_non_halo_cells.next <== iph_cells_in - (halo_cells_in - nhd1_halo_cells_in - nhd2_halo_cells_in);
 		s.iph_non_halo_nodes.next <== iph_nodes_in - (halo_nodes_in - nhd1_halo_nodes_in - nhd2_halo_nodes_in);
 
-		resetCounts(c);
 	}
 
 	private SMValue streamInNhd1IhdFinished() {
@@ -522,7 +521,7 @@ public class ResControlSM extends KernelStateMachine {
 	public void nextState() {
 		IF (kernel_running) {
 			cycle_count.next <== cycle_count + 1;
-
+			readInSizes(sizes, counts);
 			SWITCH (st) {
 				CASE (0) {
 					IF (partition_count === 1) {
@@ -597,9 +596,10 @@ public class ResControlSM extends KernelStateMachine {
 					IF (read_sizes) {
 						read_sizes.next <== false;
 					}
-					IF (lat_del_count === lat) {
+					IF (lat_del_count === sizes_lat) {
 						debug.printf("Will read in sizes: cycle: %d\n", cycle_count);
 						readInSizes(sizes, counts);
+						resetCounts(counts);
 						partition_count.next <== partition_count + 1;
 						lat_del_count.next <== 0;
 						st.next <== 0;
@@ -620,6 +620,9 @@ public class ResControlSM extends KernelStateMachine {
 		debug.printf("cycle: %d| kernel_running: %d | nodes:%d | pCount:%d | state:%d | lat_count:%d | iph_non_halo_cells:%d, iph_halo_cells:%d\n",
 				cycle_count, kernel_running, sizes.nodes, partition_count, st, lat_del_count, sizes.iph_non_halo_cells, sizes.iph_halo_cells);
 
+		debug.printf("iph_cells_in:%d, halo_cells_in:%d, nhd1_halo_cells_in:%d, nhd2_halo_cells_in:%d\n",
+				iph_cells_in, halo_cells_in, nhd1_halo_cells_in, nhd2_halo_cells_in);
+		debug.printf("iph_halo_cells.next=%d\n",  halo_cells_in - nhd1_halo_cells_in - nhd2_halo_cells_in);
 //		debug.printf("iph_cells_in:%d, halo_cells_in:%d, nhd1_halo_cells_in:%d, nhd2_halo_cells_in:%d\n",
 //				iph_cells_in, halo_cells_in, nhd1_halo_cells_in, nhd2_halo_cells_in);
 
