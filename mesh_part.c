@@ -1419,7 +1419,8 @@ int main(int argc, char* argv[]) {
     kernel_cycles += ps[i].iparts[0].cells.len;
   }
   kernel_cycles += total_edges;
-  kernel_cycles += 3 * num_parts * 25;
+  const int size_lat = 7;
+  kernel_cycles += size_lat * num_parts * 25;
 
   printf("Setting scalar inputs gm1=%f and eps=%f, nParts=%d\n", gm1, eps, num_parts);
   max_set_scalar_input_f(device, "ResCalcKernel.gm1", gm1, FPGA_A);
