@@ -375,6 +375,8 @@ public class ResControlSM extends KernelStateMachine {
 
 		debug.printf("iph_cells_in:%d, halo_cells_in:%d, nhd1_halo_cells_in:%d, nhd2_halo_cells_in:%d\n",
 				iph_cells_in, halo_cells_in, nhd1_halo_cells_in, nhd2_halo_cells_in);
+		debug.printf("iph_halo_cells.next=%d\n",  halo_cells_in - nhd1_halo_cells_in - nhd2_halo_cells_in);
+
 		s.iph_non_halo_cells.next <== iph_cells_in - (halo_cells_in - nhd1_halo_cells_in - nhd2_halo_cells_in);
 		s.iph_non_halo_nodes.next <== iph_nodes_in - (halo_nodes_in - nhd1_halo_nodes_in - nhd2_halo_nodes_in);
 
@@ -615,11 +617,11 @@ public class ResControlSM extends KernelStateMachine {
 
 	@Override
 	public void outputFunction() {
-		debug.printf("cycle: %d| kernel_running: %d | nodes:%d | pCount:%d | state:%d | lat_count:%d | iph_non_halo_cells:%d\n",
-				cycle_count, kernel_running, sizes.nodes, partition_count, st, lat_del_count, sizes.iph_non_halo_cells);
+		debug.printf("cycle: %d| kernel_running: %d | nodes:%d | pCount:%d | state:%d | lat_count:%d | iph_non_halo_cells:%d, iph_halo_cells:%d\n",
+				cycle_count, kernel_running, sizes.nodes, partition_count, st, lat_del_count, sizes.iph_non_halo_cells, sizes.iph_halo_cells);
 
-		debug.printf("iph_cells_in:%d, halo_cells_in:%d, nhd1_halo_cells_in:%d, nhd2_halo_cells_in:%d\n",
-				iph_cells_in, halo_cells_in, nhd1_halo_cells_in, nhd2_halo_cells_in);
+//		debug.printf("iph_cells_in:%d, halo_cells_in:%d, nhd1_halo_cells_in:%d, nhd2_halo_cells_in:%d\n",
+//				iph_cells_in, halo_cells_in, nhd1_halo_cells_in, nhd2_halo_cells_in);
 
 		IF (kernel_running){
 			SWITCH (st) {
@@ -641,8 +643,9 @@ public class ResControlSM extends KernelStateMachine {
 
 						halo_read_cell <== (counts.part1_halo_cells_stream_in < sizes.nhd1_halo_cells + sizes.iph_halo_cells)
 							& (halo_read_delay_count === halo_io_delay);
-						debug.printf("\nSMReading halo cell st0: %d\n", (counts.part1_halo_cells_stream_in < sizes.nhd1_halo_cells + sizes.iph_halo_cells)
-								& (halo_read_delay_count === halo_io_delay));
+
+//						debug.printf("\nSMReading halo cell st0: %d\n", (counts.part1_halo_cells_stream_in < sizes.nhd1_halo_cells + sizes.iph_halo_cells)
+//								& (halo_read_delay_count === halo_io_delay));
 
 						halo_read_node <== (counts.part1_halo_nodes_stream_in < sizes.nhd1_halo_nodes + sizes.iph_halo_nodes)
 							& (halo_read_delay_count === halo_io_delay);
@@ -660,7 +663,7 @@ public class ResControlSM extends KernelStateMachine {
 					writing <== false;
 					writing_halo <== false;
 					halo_read_cell <== (counts.part2_halo_cells_stream_in < sizes.nhd2_halo_cells) & (halo_read_delay_count === halo_io_delay);
-					debug.printf("\nReading halo cell st1: %d\n", (counts.part2_halo_cells_stream_in < sizes.nhd2_halo_cells) & (halo_read_delay_count === halo_io_delay));
+//					debug.printf("\nReading halo cell st1: %d\n", (counts.part2_halo_cells_stream_in < sizes.nhd2_halo_cells) & (halo_read_delay_count === halo_io_delay));
 					halo_read_node <== (counts.part2_halo_nodes_stream_in < sizes.nhd2_halo_nodes) & (halo_read_delay_count === halo_io_delay);
 					read_edge <== ~processNhd1IhdFinished();
 					read_cell <== counts.part2_non_halo_cells_stream_in < sizes.nhd2_non_halo_cells;
@@ -670,13 +673,13 @@ public class ResControlSM extends KernelStateMachine {
 
 				CASE (2) {
 					processing <== ~processNhd2IhdFinished();
-					debug.printf("State2: ~processFinished:%d\n", ~processNhd2IhdFinished());
+//					debug.printf("State2: ~processFinished:%d\n", ~processNhd2IhdFinished());
 					writing <== counts.part1_non_halo_cells_stream_out < sizes.nhd1_non_halo_cells;
-					debug.printf("part1_non_halo_cells_stream_out: %d, nhd1_non_halo_cells:%d\n",
-							counts.part1_non_halo_cells_stream_out, sizes.nhd1_non_halo_cells);
+//					debug.printf("part1_non_halo_cells_stream_out: %d, nhd1_non_halo_cells:%d\n",
+//							counts.part1_non_halo_cells_stream_out, sizes.nhd1_non_halo_cells);
 
 					writing_halo <== counts.part1_halo_cells_stream_out < sizes.nhd1_halo_cells & halo_write_delay_count === halo_io_delay;
-					debug.printf("part1_halo_cells_out:%d, nhd1_halo_cells:%d\n", counts.part1_halo_cells_stream_out, sizes.nhd1_halo_cells);
+//					debug.printf("part1_halo_cells_out:%d, nhd1_halo_cells:%d\n", counts.part1_halo_cells_stream_out, sizes.nhd1_halo_cells);
 					halo_read_cell <== false;
 					halo_read_node <== false;
 					read_edge <== ~processNhd2IhdFinished();
