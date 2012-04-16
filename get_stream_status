@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+simName=$1
+dev=${simName}0:${simName}
+maxfile=$2
+maxdebug -d $dev -g manager $maxfile
