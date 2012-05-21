@@ -1343,6 +1343,7 @@ int main(int argc, char* argv[]) {
   while (((padding_nodes + globalNodesScheduled.len) * sizeof(*nodes_scheduled)) % burst_len != 0) {
     padding_nodes++;
   }
+  uint32_t total_nodes = padding_nodes + globalNodesScheduled.len;
   printf("added %d padding nodes\n", padding_nodes);
   nodes_scheduled = realloc(nodes_scheduled, (padding_nodes + globalNodesScheduled.len) * sizeof(*nodes_scheduled));
 
@@ -1350,6 +1351,7 @@ int main(int argc, char* argv[]) {
   while (((padding_cells + globalCellsScheduled.len) * sizeof(*cells_scheduled)) % burst_len != 0) {
     padding_cells++;
   }
+  uint32_t total_cells = padding_cells + globalCellsScheduled.len;
   printf("added %d padding cells\n", padding_cells);
   cells_scheduled = realloc(cells_scheduled, (padding_cells + globalCellsScheduled.len) * sizeof(*cells_scheduled));
 
@@ -1357,6 +1359,7 @@ int main(int argc, char* argv[]) {
   while (((padding_edges + total_edges) * sizeof(*globalEdgeStructsScheduled)) % burst_len != 0) {
     padding_edges++;
   }
+  uint32_t nEdges = total_edges + padding_edges;
   printf("added %d padding edges\n", padding_edges);
   globalEdgeStructsScheduled = realloc(globalEdgeStructsScheduled, (padding_edges + total_edges) * sizeof(*globalEdgeStructsScheduled));
 
@@ -1364,6 +1367,7 @@ int main(int argc, char* argv[]) {
   while(((num_parts + padding_sizes) * sizeof(*size_vectors)) % burst_len != 0) {
     padding_sizes++;
   }
+  uint32_t total_sizes = num_parts + padding_sizes;
   printf("added %d padding sizes\n", padding_sizes);
   size_vectors = realloc(size_vectors, (padding_sizes + num_parts) * sizeof(*size_vectors));
 
@@ -1422,11 +1426,15 @@ int main(int argc, char* argv[]) {
   const int size_lat = 7;
   kernel_cycles += size_lat * num_parts * 25;
 
-  printf("Setting scalar inputs gm1=%f and eps=%f, nParts=%d\n", gm1, eps, num_parts);
+  printf("Setting scalar inputs (including gm1=%f and eps=%f)\n", gm1, eps);
   max_set_scalar_input_f(device, "ResCalcKernel.gm1", gm1, FPGA_A);
   max_set_scalar_input_f(device, "ResCalcKernel.eps", eps, FPGA_A);
   max_set_scalar_input(device, "ResCalcKernel.nParts", num_parts, FPGA_A);
   max_set_scalar_input(device, "ResCalcKernel.numHaloCells", globalHaloCellsScheduled.len, FPGA_A);
+  max_set_scalar_input(device, "ResCalcKernel.nNodes", total_nodes, FPGA_A);
+  max_set_scalar_input(device, "ResCalcKernel.nCells", total_cells, FPGA_A);
+  max_set_scalar_input(device, "ResCalcKernel.nEdges", nEdges, FPGA_A);
+  max_set_scalar_input(device, "ResCalcKernel.nSizes", total_sizes, FPGA_A);
 
   printf("Halo cells scheduled: %d\n", globalHaloCellsScheduled.len);
   printf("Halo nodes scheduled: %d\n", globalHaloNodesScheduled.len);

@@ -114,11 +114,17 @@ public class ResCalcKernel extends Kernel {
 
 		KStruct sizes = size_struct_t.newInstance(this);
 
+		HWType scalar_size_t = hwUInt(48);
 		HWVar nParts = io.scalarInput("nParts", addr_t);
+		HWVar nSizes = io.scalarInput("nSizes", scalar_size_t);
+		HWVar nNodes = io.scalarInput("nNodes", scalar_size_t);
+		HWVar nCells = io.scalarInput("nCells", scalar_size_t);
+		HWVar nEdges = io.scalarInput("nEdges", scalar_size_t);
 
+		debug.printf("nParts= %d, nSizes= %d, nNodes= %d, nCells= %d, nEdges= %d\n", nParts, nSizes, nNodes, nCells, nEdges);
 
 		final int sizes_lat = 7;
-		final int halo_io_delay = 6;
+		final int halo_io_delay = 7;
 
 		HWVar kernel_running = total_count > sizes_lat;
 
