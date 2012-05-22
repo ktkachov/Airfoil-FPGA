@@ -43,7 +43,6 @@ public class ResControlSM extends KernelStateMachine {
 
 
 
-
 		final SMStateValue part1_edges;
 		final SMStateValue nhd1_nodes;
 		final SMStateValue nhd2_cells;
@@ -192,6 +191,7 @@ public class ResControlSM extends KernelStateMachine {
 	private final SMOutput read_edge;
 	private final SMOutput read_cell;
 	private final SMOutput read_node;
+	private final SMOutput partition_count_out;
 
 	private final int addr_width;
 	private final int halo_io_delay;
@@ -228,6 +228,7 @@ public class ResControlSM extends KernelStateMachine {
 		this.sizes_lat 			= sizes_lat;
 		SMValueType addr_t 		= smUInt(addr_width);
 		this.halo_io_delay		= halo_delay;
+
 
 		arith_delay_count		= state.value(addr_t, 0);
 		halo_read_delay_count 	= state.value(smUInt(width), 0);
@@ -273,6 +274,7 @@ public class ResControlSM extends KernelStateMachine {
 		read_cell		= io.output("read_cell", smBool());
 		read_node 		= io.output("read_node", smBool());
 		writing_halo	= io.output("writing_halo", smBool());
+		partition_count_out = io.output("partition_count", addr_t);
 
 		lat_del_count   = state.value(addr_t, 0);
 
@@ -634,6 +636,7 @@ public class ResControlSM extends KernelStateMachine {
 //		debug.printf("iph_cells_in:%d, halo_cells_in:%d, nhd1_halo_cells_in:%d, nhd2_halo_cells_in:%d\n",
 //				iph_cells_in, halo_cells_in, nhd1_halo_cells_in, nhd2_halo_cells_in);
 
+		partition_count_out <== partition_count;
 		IF (kernel_running){
 			SWITCH (st) {
 				CASE (0) {

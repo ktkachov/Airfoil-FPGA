@@ -116,15 +116,16 @@ public class ResCalcKernel extends Kernel {
 
 		HWType scalar_size_t = hwUInt(48);
 		HWVar nParts = io.scalarInput("nParts", addr_t);
-		HWVar nSizes = io.scalarInput("nSizes", scalar_size_t);
-		HWVar nNodes = io.scalarInput("nNodes", scalar_size_t);
-		HWVar nCells = io.scalarInput("nCells", scalar_size_t);
-		HWVar nEdges = io.scalarInput("nEdges", scalar_size_t);
+		HWVar nPaddingSizes = io.scalarInput("padding_sizes", scalar_size_t);
+		HWVar nPaddingNodes = io.scalarInput("padding_nodes", scalar_size_t);
+		HWVar nPaddingCells = io.scalarInput("padding_cells", scalar_size_t);
+		HWVar nPaddingEdges = io.scalarInput("padding_edges", scalar_size_t);
 
-		debug.printf("nParts= %d, nSizes= %d, nNodes= %d, nCells= %d, nEdges= %d\n", nParts, nSizes, nNodes, nCells, nEdges);
+
+		debug.printf("nParts= %d, padding_sizes= %d, padding_nodes= %d, padding_cells= %d, padding_edges= %d\n", nParts, nPaddingSizes, nPaddingNodes, nPaddingCells, nPaddingEdges);
 
 		final int sizes_lat = 7;
-		final int halo_io_delay = 7;
+		final int halo_io_delay = 8;
 
 		HWVar kernel_running = total_count > sizes_lat;
 
@@ -151,18 +152,43 @@ public class ResCalcKernel extends Kernel {
 		control_sm.connectInput("nhd2_halo_nodes", (HWVar) sizes.get("nhd2_halo_nodes"));
 		control_sm.connectInput("nhd2_halo_cells", (HWVar) sizes.get("nhd2_halo_cells"));
 
+
+
+
+
 		HWVar valid_partition = (HWVar)sizes["nodes"] !== 0;
 		final int off = sizes_lat + 3;
-		HWVar read_cell = total_count < off ? 0 : stream.offset(control_sm.getOutput("read_cell"), -off) & valid_partition & kernel_running;
-		HWVar read_node = total_count < off ? 0 : stream.offset(control_sm.getOutput("read_node"), -off) & valid_partition & kernel_running;
-		HWVar read_edge = total_count < off ? 0 : stream.offset(control_sm.getOutput("read_edge"), -off) & valid_partition & kernel_running;
-		HWVar read_sizes = control_sm.getOutput("read_sizes") & kernel_running;
+		HWVar read_cell 	= total_count < off ? 0 : stream.offset(control_sm.getOutput("read_cell"), -off) & valid_partition & kernel_running;
+		HWVar read_node 	= total_count < off ? 0 : stream.offset(control_sm.getOutput("read_node"), -off) & valid_partition & kernel_running;
+		HWVar read_edge 	= total_count < off ? 0 : stream.offset(control_sm.getOutput("read_edge"), -off) & valid_partition & kernel_running;
+		HWVar read_sizes 	= control_sm.getOutput("read_sizes") & kernel_running;
 
-		HWVar processing = total_count < off ? 0 : stream.offset(control_sm.getOutput("processing"), -off) & kernel_running;
-		HWVar output_data = total_count < off ? 0 : stream.offset(control_sm.getOutput("writing"), -off) & kernel_running;
-		HWVar output_halo = total_count < off ? 0 : stream.offset(control_sm.getOutput("writing_halo"), -off) & kernel_running;
-		HWVar read_host_halo_cell = total_count < off ? 0 : stream.offset(control_sm.getOutput("halo_read_cell"), -off) & valid_partition & kernel_running;
-		HWVar read_host_halo_node = total_count < off ? 0 : stream.offset(control_sm.getOutput("halo_read_node"), -off) & valid_partition & kernel_running;
+		HWVar processing 			= total_count < off ? 0 : stream.offset(control_sm.getOutput("processing"), -off) & kernel_running;
+		HWVar output_data 			= total_count < off ? 0 : stream.offset(control_sm.getOutput("writing"), -off) & kernel_running;
+		HWVar output_halo 			= total_count < off ? 0 : stream.offset(control_sm.getOutput("writing_halo"), -off) & kernel_running;
+		HWVar read_host_halo_cell 	= total_count < off ? 0 : stream.offset(control_sm.getOutput("halo_read_cell"), -off) & valid_partition & kernel_running;
+		HWVar read_host_halo_node 	= total_count < off ? 0 : stream.offset(control_sm.getOutput("halo_read_node"), -off) & valid_partition & kernel_running;
+
+
+		Count.Params cparams = control.count.makeParams(48).withEnable(read_cell);
+		Counter cell_count = control.count.makeCounter(cparams);
+		cparams = control.count.makeParams(48).withEnable(read_node);
+		Counter node_count = control.count.makeCounter(cparams);
+		cparams = control.count.makeParams(48).withEnable(read_edge);
+		Counter edge_count = control.count.makeCounter(cparams);
+		cparams = control.count.makeParams(addr_t.getTotalBits()).withEnable(read_sizes);
+		Counter sizes_count = control.count.makeCounter(cparams);
+
+		debug.printf("===sizes_count : %d===\n", sizes_count.getCount());
+
+		HWVar finished = control_sm.getOutput("partition_count") > nParts;
+		cparams = control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished);
+		Counter excess_sizes = control.count.makeCounter(cparams);
+		Counter excess_nodes = control.count.makeCounter(control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished));
+		Counter excess_cells = control.count.makeCounter(control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished));
+		Counter excess_edges = control.count.makeCounter(control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished));
+
+		debug.printf("eSizes: %d, eNodes: %d, eCells: %d, eEdges: %d\n", excess_sizes.getCount(), excess_nodes.getCount(), excess_cells.getCount(), excess_edges.getCount());
 
 //		debug.printf("rCell:%d, rNode:%d, rEdge:%d, rSizes:%d, processing:%d, writing:%d, wHalo:%d, readHCell:%d, readHNode:%d\n",
 //				read_cell, read_node, read_edge, read_sizes, processing, output_data, output_halo, read_host_halo_cell, read_host_halo_node);
@@ -179,9 +205,9 @@ public class ResCalcKernel extends Kernel {
 
 		HWVar total_halo_cells = io.scalarInput("numHaloCells", hwUInt(32));
 
-		KStruct node_input_dram = io.input("node_input_dram", node_struct_t, read_node);
-		KStruct cell_input_dram = io.input("cell_input_dram", cell_struct_t, read_cell);
-		KStruct edge 			= io.input("addresses", address_struct_t, 	 read_edge);
+		KStruct node_input_dram = io.input("node_input_dram", node_struct_t, read_node | (finished & excess_nodes.getCount() < nPaddingNodes));
+		KStruct cell_input_dram = io.input("cell_input_dram", cell_struct_t, read_cell | (finished & excess_cells.getCount() < nPaddingCells));
+		KStruct edge 			= io.input("addresses", address_struct_t, 	 read_edge | (finished & excess_cells.getCount() < nPaddingEdges));
 
 		Count.Params read_halo_cell_count_params = control.count.makeParams(48).withEnable(read_host_halo_cell);
 		Counter read_halo_cell_count = control.count.makeCounter(read_halo_cell_count_params);
@@ -192,16 +218,9 @@ public class ResCalcKernel extends Kernel {
 
 
 
-		Count.Params edge_count_params = control.count.makeParams(48).withEnable(read_edge);
-		Counter edge_count = control.count.makeCounter(edge_count_params);
-//		debug.printf(read_edge, "processing edge number:%d\n", edge_count.getCount());
 
-		Count.Params cell_count_params = control.count.makeParams(48).withEnable(read_cell);
-		Counter cell_count = control.count.makeCounter(cell_count_params);
 		debug.printf("read in %d cells from dram\n", cell_count.getCount());
 
-		Count.Params node_count_params = control.count.makeParams(48).withEnable(read_node);
-		Counter node_count = control.count.makeCounter(node_count_params);
 		debug.printf("read in %d nodes from dram\n", node_count.getCount());
 		Count.Params write_cell_count_params = control.count.makeParams(48).withEnable(output_data);
 		Counter write_cell_count = control.count.makeCounter(write_cell_count_params);

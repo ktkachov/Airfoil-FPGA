@@ -1398,15 +1398,16 @@ int main(int argc, char* argv[]) {
     printf("ERROR!: Could not get default memory setting\n");
     return 1;
   }
+  
   printf("Setting up linear address generators...\n");
   printf("Setting up nodes...\n");
-  setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "nodes_from_dram", offset[0], offset[1]-offset[0], 0);
+  setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "nodes_from_dram", offset[0], offset[1] - offset[0], 0);
   printf("Setting up cells...\n");
-  setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "cells_from_dram", offset[1], offset[2]-offset[1], 0);
+  setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "cells_from_dram", offset[1], offset[2] - offset[1], 0);
   printf("Setting up edges...\n");
-  setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "addresses_from_dram", offset[2], offset[3]-offset[2], 0);
+  setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "addresses_from_dram", offset[2], offset[3] - offset[2], 0);
   printf("Setting up sizes...\n");
-  setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "sizes", offset[3], offset[4]-offset[3], 0);
+  setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "sizes", offset[3], offset[4] - offset[3], 0);
   printf("Setting up cell outputs...\n");
   setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "to_dram", offset[4], (padding_res + globalCellsScheduled.len) * sizeof(*res_non_halo), 1);
 
@@ -1425,16 +1426,17 @@ int main(int argc, char* argv[]) {
   kernel_cycles += total_edges;
   const int size_lat = 7;
   kernel_cycles += size_lat * num_parts * 25;
+  kernel_cycles += padding_edges;
 
   printf("Setting scalar inputs (including gm1=%f and eps=%f)\n", gm1, eps);
   max_set_scalar_input_f(device, "ResCalcKernel.gm1", gm1, FPGA_A);
   max_set_scalar_input_f(device, "ResCalcKernel.eps", eps, FPGA_A);
   max_set_scalar_input(device, "ResCalcKernel.nParts", num_parts, FPGA_A);
   max_set_scalar_input(device, "ResCalcKernel.numHaloCells", globalHaloCellsScheduled.len, FPGA_A);
-  max_set_scalar_input(device, "ResCalcKernel.nNodes", total_nodes, FPGA_A);
-  max_set_scalar_input(device, "ResCalcKernel.nCells", total_cells, FPGA_A);
-  max_set_scalar_input(device, "ResCalcKernel.nEdges", nEdges, FPGA_A);
-  max_set_scalar_input(device, "ResCalcKernel.nSizes", total_sizes, FPGA_A);
+  max_set_scalar_input(device, "ResCalcKernel.padding_nodes", padding_nodes, FPGA_A);
+  max_set_scalar_input(device, "ResCalcKernel.padding_cells", padding_cells, FPGA_A);
+  max_set_scalar_input(device, "ResCalcKernel.padding_edges", padding_edges, FPGA_A);
+  max_set_scalar_input(device, "ResCalcKernel.padding_sizes", padding_sizes, FPGA_A);
 
   printf("Halo cells scheduled: %d\n", globalHaloCellsScheduled.len);
   printf("Halo nodes scheduled: %d\n", globalHaloNodesScheduled.len);
