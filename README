@@ -13,3 +13,10 @@ as edge-weights. This is in the form of a .dot graph. To make that graph use the
 put the generated graph in the graphs/ directory.
 
 Note that currently the project is focused on accelerating the res_calc kernel of airfoil.
+
+in order to run the run_mesh_fpga_sim script, the simulation libraries must be loaded.
+I recommend adding the following alias to the ~/.cshrc file (for CSH obviously):
+alias maxsimlib "setenv MAXLERORSDIR $MAXCOMPILERDIR/lib/maxeleros-sim ; setenv LD_PRELOAD $MAXELEROSDIR/lib/libmaxeleros.so"
+Now you can load the simulation libraries with 'maxsimlib' and run the simulation with run_mesh_fpga.
+The simulation log will be stored in /tmp/ResSim.log . WARNING: The simulation log can get 100s of Megabytes in size,
+so keep that in mind if your disk space is controlled by a quota system.
