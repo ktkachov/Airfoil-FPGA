@@ -14,6 +14,7 @@ import com.maxeler.maxcompiler.v1.kernelcompiler.KernelParameters;
 import com.maxeler.maxcompiler.v1.kernelcompiler.SMIO;
 import com.maxeler.maxcompiler.v1.kernelcompiler.stdlib.core.Count;
 import com.maxeler.maxcompiler.v1.kernelcompiler.stdlib.core.Count.Counter;
+import com.maxeler.maxcompiler.v1.kernelcompiler.stdlib.core.Count.WrapMode;
 import com.maxeler.maxcompiler.v1.kernelcompiler.stdlib.core.Mem;
 import com.maxeler.maxcompiler.v1.kernelcompiler.stdlib.core.Mem.DualPortMemOutputs;
 import com.maxeler.maxcompiler.v1.kernelcompiler.stdlib.core.Mem.RamPortMode;
@@ -120,11 +121,12 @@ public class ResCalcKernel extends Kernel {
 		HWVar nPaddingNodes = io.scalarInput("padding_nodes", scalar_size_t);
 		HWVar nPaddingCells = io.scalarInput("padding_cells", scalar_size_t);
 		HWVar nPaddingEdges = io.scalarInput("padding_edges", scalar_size_t);
+		HWVar nPaddingRes  	= io.scalarInput("padding_res", scalar_size_t);
 
 
 		debug.printf("nParts= %d, padding_sizes= %d, padding_nodes= %d, padding_cells= %d, padding_edges= %d\n", nParts, nPaddingSizes, nPaddingNodes, nPaddingCells, nPaddingEdges);
 
-		final int sizes_lat = 7;
+		final int sizes_lat = 10;
 		final int halo_io_delay = 8;
 
 		HWVar kernel_running = total_count > sizes_lat;
@@ -154,8 +156,6 @@ public class ResCalcKernel extends Kernel {
 
 
 
-
-
 		HWVar valid_partition = (HWVar)sizes["nodes"] !== 0;
 		final int off = sizes_lat + 3;
 		HWVar read_cell 	= total_count < off ? 0 : stream.offset(control_sm.getOutput("read_cell"), -off) & valid_partition & kernel_running;
@@ -181,14 +181,18 @@ public class ResCalcKernel extends Kernel {
 
 		debug.printf("===sizes_count : %d===\n", sizes_count.getCount());
 
-		HWVar finished = control_sm.getOutput("partition_count") > nParts;
-		cparams = control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished);
+		HWVar finished = control_sm.getOutput("finished");
+		debug.printf("====SM_finished? %d====\n", finished);
+		cparams = control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished & ~read_sizes).withMax(nPaddingSizes).withWrapMode(WrapMode.STOP_AT_MAX);
 		Counter excess_sizes = control.count.makeCounter(cparams);
-		Counter excess_nodes = control.count.makeCounter(control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished));
-		Counter excess_cells = control.count.makeCounter(control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished));
-		Counter excess_edges = control.count.makeCounter(control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished));
+		Counter excess_nodes = control.count.makeCounter(control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished & ~read_node).withMax(nPaddingNodes).withWrapMode(WrapMode.STOP_AT_MAX));
+		Counter excess_cells = control.count.makeCounter(control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished & ~read_cell).withMax(nPaddingCells).withWrapMode(WrapMode.STOP_AT_MAX));
+		Counter excess_edges = control.count.makeCounter(control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished & ~read_edge).withMax(nPaddingEdges).withWrapMode(WrapMode.STOP_AT_MAX));
+		Counter excess_res	 = control.count.makeCounter(control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished).withMax(nPaddingRes).withWrapMode(WrapMode.STOP_AT_MAX));
 
-		debug.printf("eSizes: %d, eNodes: %d, eCells: %d, eEdges: %d\n", excess_sizes.getCount(), excess_nodes.getCount(), excess_cells.getCount(), excess_edges.getCount());
+
+		debug.printf("eSizes: %d/%d, eNodes: %d/%d, eCells: %d/%d, eEdges: %d/%d\n", excess_sizes.getCount(), nPaddingSizes, excess_nodes.getCount(), nPaddingNodes,
+				excess_cells.getCount(), nPaddingCells, excess_edges.getCount(), nPaddingEdges);
 
 //		debug.printf("rCell:%d, rNode:%d, rEdge:%d, rSizes:%d, processing:%d, writing:%d, wHalo:%d, readHCell:%d, readHNode:%d\n",
 //				read_cell, read_node, read_edge, read_sizes, processing, output_data, output_halo, read_host_halo_cell, read_host_halo_node);
@@ -199,15 +203,24 @@ public class ResCalcKernel extends Kernel {
 			zero_sizes[field] = field.equals("padding") ? hwUInt(sizes_padding).newInstance(this, 0) : size_width_t.newInstance(this, 0);
 		}
 
-		KStruct size_input = io.input("sizes", size_struct_t, read_sizes);
+
+//		KStruct size_input = io.input("sizes", size_struct_t, read_sizes | (finished & ~read_sizes & (excess_sizes.getCount() < nPaddingSizes)));
+		KStruct size_input = io.input("sizes", size_struct_t, read_sizes );
+		debug.printf("Read sizes %d\n", read_sizes);
+
 		sizes <== stream.offset(size_input, -sizes_lat);
 		debug.printf("sizes: %KObj%\n", sizes);
 
 		HWVar total_halo_cells = io.scalarInput("numHaloCells", hwUInt(32));
 
-		KStruct node_input_dram = io.input("node_input_dram", node_struct_t, read_node | (finished & excess_nodes.getCount() < nPaddingNodes));
-		KStruct cell_input_dram = io.input("cell_input_dram", cell_struct_t, read_cell | (finished & excess_cells.getCount() < nPaddingCells));
-		KStruct edge 			= io.input("addresses", address_struct_t, 	 read_edge | (finished & excess_cells.getCount() < nPaddingEdges));
+//		KStruct node_input_dram = io.input("node_input_dram", node_struct_t, read_node | (finished & ~read_node & (excess_nodes.getCount() < nPaddingNodes)));
+//		KStruct cell_input_dram = io.input("cell_input_dram", cell_struct_t, read_cell | (finished & ~read_cell & (excess_cells.getCount() < nPaddingCells)));
+//		KStruct edge 			= io.input("addresses", address_struct_t, 	 read_edge | (finished & ~read_edge & (excess_edges.getCount() < nPaddingEdges)));
+
+		KStruct node_input_dram = io.input("node_input_dram", node_struct_t, read_node );
+		KStruct cell_input_dram = io.input("cell_input_dram", cell_struct_t, read_cell );
+		KStruct edge 			= io.input("addresses", address_struct_t, 	 read_edge );
+
 
 		Count.Params read_halo_cell_count_params = control.count.makeParams(48).withEnable(read_host_halo_cell);
 		Counter read_halo_cell_count = control.count.makeCounter(read_halo_cell_count_params);
@@ -215,7 +228,6 @@ public class ResCalcKernel extends Kernel {
 
 		KStruct cell_data_host	= io.input("input_host_cell", cell_struct_t, read_host_halo_cell);
 		KStruct node_data_host 	= io.input("input_host_node", node_struct_t, read_host_halo_node);
-
 
 
 
@@ -519,7 +531,7 @@ public class ResCalcKernel extends Kernel {
 //		debug.printf(output_halo, "outputting halo: %KObj%\n", res_host_output);
 
 		debug.printf("----------------------------\n");
-		io.output("result_dram", res_dram_output.getType(), output_data) <== res_dram_output;
+		io.output("result_dram", res_dram_output.getType(), output_data | (finished & excess_res.getCount() < nPaddingRes-1)) <== res_dram_output;
 		io.output("result_pcie", res_dram_output.getType(), output_halo) <== res_host_output;
 	}
 
@@ -580,6 +592,15 @@ public class ResCalcKernel extends Kernel {
 		HWVar r_pad = res["padding"];
 		r_pad <== r_pad.getType().newInstance(this, 0);
 		return res;
+	}
+
+	KStruct zeroSize() {
+		KStruct r = size_struct_t.newInstance(this);
+		for (String f : size_struct_t.getFieldNames()) {
+			HWVar fd = r[f];
+			fd <== ((HWType)(r[f].getType())).newInstance(this, 0);
+		}
+		return r;
 	}
 
 	@SuppressWarnings("unchecked")

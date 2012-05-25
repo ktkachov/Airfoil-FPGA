@@ -1370,6 +1370,7 @@ int main(int argc, char* argv[]) {
   uint32_t total_sizes = num_parts + padding_sizes;
   printf("added %d padding sizes\n", padding_sizes);
   size_vectors = realloc(size_vectors, (padding_sizes + num_parts) * sizeof(*size_vectors));
+  memset(size_vectors + num_parts, 0x0, padding_sizes * sizeof(*size_vectors));
 
   uint32_t padding_res = 0;
   while (((globalCellsScheduled.len + padding_res) * sizeof(padding_res)) % burst_len != 0) {
@@ -1400,15 +1401,15 @@ int main(int argc, char* argv[]) {
   }
   
   printf("Setting up linear address generators...\n");
-  printf("Setting up nodes...\n");
+  printf("Setting up %ld bytes nodes...\n", offset[1] - offset[0]);
   setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "nodes_from_dram", offset[0], offset[1] - offset[0], 0);
-  printf("Setting up cells...\n");
+  printf("Setting up %ld bytes cells...\n", offset[2] - offset[1]);
   setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "cells_from_dram", offset[1], offset[2] - offset[1], 0);
-  printf("Setting up edges...\n");
+  printf("Setting up %ld bytes edges...\n", offset[3] - offset[2]);
   setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "addresses_from_dram", offset[2], offset[3] - offset[2], 0);
-  printf("Setting up sizes...\n");
+  printf("Setting up %ld bytes sizes...\n", offset[4] - offset[3]);
   setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "sizes", offset[3], offset[4] - offset[3], 0);
-  printf("Setting up cell outputs...\n");
+  printf("Setting up %ld bytes cell outputs...\n", (padding_res + globalCellsScheduled.len) * sizeof(*res_non_halo));
   setup_linear_address_generator(maxfile, device, FPGA_A, ctx, "to_dram", offset[4], (padding_res + globalCellsScheduled.len) * sizeof(*res_non_halo), 1);
 
   printf("Commiting memory setting to FPGA...\n");
@@ -1424,7 +1425,7 @@ int main(int argc, char* argv[]) {
     kernel_cycles += ps[i].iparts[0].cells.len;
   }
   kernel_cycles += total_edges;
-  const int size_lat = 7;
+  const int size_lat = 10;
   kernel_cycles += size_lat * num_parts * 25;
   kernel_cycles += padding_edges;
 
@@ -1437,6 +1438,7 @@ int main(int argc, char* argv[]) {
   max_set_scalar_input(device, "ResCalcKernel.padding_cells", padding_cells, FPGA_A);
   max_set_scalar_input(device, "ResCalcKernel.padding_edges", padding_edges, FPGA_A);
   max_set_scalar_input(device, "ResCalcKernel.padding_sizes", padding_sizes, FPGA_A);
+  max_set_scalar_input(device, "ResCalcKernel.padding_res", padding_res, FPGA_A);
 
   printf("Halo cells scheduled: %d\n", globalHaloCellsScheduled.len);
   printf("Halo nodes scheduled: %d\n", globalHaloNodesScheduled.len);

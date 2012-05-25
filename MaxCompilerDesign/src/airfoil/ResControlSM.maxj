@@ -182,6 +182,8 @@ public class ResControlSM extends KernelStateMachine {
 	private final SMStateValue prev_part_halo_size;
 	private final SMStateValue prev_part_non_halo_size;
 
+	private final SMStateValue finished;
+
 	private final SMOutput processing;
 	private final SMOutput writing;
 	private final SMOutput writing_halo;
@@ -192,6 +194,7 @@ public class ResControlSM extends KernelStateMachine {
 	private final SMOutput read_cell;
 	private final SMOutput read_node;
 	private final SMOutput partition_count_out;
+	private final SMOutput finished_out;
 
 	private final int addr_width;
 	private final int halo_io_delay;
@@ -237,6 +240,8 @@ public class ResControlSM extends KernelStateMachine {
 		partition_count			= state.value(addr_t, 0);
 		st						= state.value(smUInt(2), 3);
 
+		finished				= state.value(smBool(), false);
+
 		cycle_count 			= state.value(smUInt(48), 0);
 
 		prev_part_halo_size 	= state.value(addr_t, 0);
@@ -275,6 +280,7 @@ public class ResControlSM extends KernelStateMachine {
 		read_node 		= io.output("read_node", smBool());
 		writing_halo	= io.output("writing_halo", smBool());
 		partition_count_out = io.output("partition_count", addr_t);
+		finished_out		= io.output("finished", smBool());
 
 		lat_del_count   = state.value(addr_t, 0);
 
@@ -391,10 +397,10 @@ public class ResControlSM extends KernelStateMachine {
 
 	private SMValue streamInNhd1IhdFinished() {
 		SMValue res =
-			counts.part1_non_halo_cells_stream_in === sizes.nhd1_non_halo_cells  + sizes.iph_non_halo_cells &
+			(counts.part1_non_halo_cells_stream_in === sizes.nhd1_non_halo_cells  + sizes.iph_non_halo_cells &
 			counts.part1_halo_cells_stream_in === sizes.nhd1_halo_cells + sizes.iph_halo_cells &
 			counts.part1_non_halo_nodes_stream_in === sizes.nhd1_non_halo_nodes + sizes.iph_non_halo_nodes &
-			counts.part1_halo_nodes_stream_in === sizes.nhd1_halo_nodes + sizes.iph_halo_nodes
+			counts.part1_halo_nodes_stream_in === sizes.nhd1_halo_nodes + sizes.iph_halo_nodes)
 			;
 		return res;
 	}
@@ -529,7 +535,9 @@ public class ResControlSM extends KernelStateMachine {
 		debug.printf("wrote back %d/%d p1, %d/%d from previous p2 halo cells\n", counts.part1_halo_cells_stream_out, sizes.nhd1_halo_cells, counts.part2_halo_cells_stream_out, prev_part_halo_size);
 		IF (kernel_running) {
 			cycle_count.next <== cycle_count + 1;
-			readInSizes(sizes, counts);
+			IF (partition_count <= nParts) {
+				readInSizes(sizes, counts);
+			}
 			SWITCH (st) {
 				CASE (0) {
 					IF (partition_count === 1) {
@@ -546,12 +554,16 @@ public class ResControlSM extends KernelStateMachine {
 							updateCountsState0();
 						}
 					} ELSE {
+						IF (partition_count >= nParts & streamOutNhd2IhdFinished()) {
+							finished.next <== true;
+						}
 						IF (streamInNhd1IhdFinished() & streamOutNhd2IhdFinished()) {
 							IF (arith_delay_count === arith_delay) {
 								arith_delay_count.next <== 0;
 								st.next <== 1;
 								halo_read_delay_count.next <== 0;
 								halo_write_delay_count.next <== 0;
+
 							} ELSE {
 								arith_delay_count.next <== arith_delay_count + 1;
 							}
@@ -597,7 +609,9 @@ public class ResControlSM extends KernelStateMachine {
 				}
 
 				CASE (3) {
-					resetCounts(counts);
+					IF (partition_count <= nParts) {
+						resetCounts(counts);
+					}
 					IF (lat_del_count === 0 & ~read_sizes) {
 						read_sizes.next <== true;
 					}
@@ -637,6 +651,7 @@ public class ResControlSM extends KernelStateMachine {
 //				iph_cells_in, halo_cells_in, nhd1_halo_cells_in, nhd2_halo_cells_in);
 
 		partition_count_out <== partition_count;
+		finished_out <== finished;
 		IF (kernel_running){
 			SWITCH (st) {
 				CASE (0) {
@@ -668,11 +683,14 @@ public class ResControlSM extends KernelStateMachine {
 						read_node <== false;
 						halo_read_cell <== false;
 						halo_read_node <== false;
+
+
 					}
 					read_sizes_out <== false;
 				}
 
 				CASE (1) {
+
 					processing <== ~processNhd1IhdFinished();
 					writing <== false;
 					writing_halo <== false;
@@ -686,6 +704,7 @@ public class ResControlSM extends KernelStateMachine {
 				}
 
 				CASE (2) {
+
 					processing <== ~processNhd2IhdFinished();
 //					debug.printf("State2: ~processFinished:%d\n", ~processNhd2IhdFinished());
 					writing <== counts.part1_non_halo_cells_stream_out < sizes.nhd1_non_halo_cells;
@@ -705,6 +724,7 @@ public class ResControlSM extends KernelStateMachine {
 				}
 
 				CASE (3) {
+
 					processing <== false;
 					writing <== false;
 					writing_halo <== false;
