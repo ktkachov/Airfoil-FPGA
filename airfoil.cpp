@@ -119,44 +119,53 @@ int main(int argc, char **argv){
 
   clock_t start, end;
   start = clock();
-  
+ 
+  double times[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
+ 
   for(int iter=1; iter<=niter; iter++) {
 
 // save old flow solution
-
+    clock_t before_clock = clock();
     for (int i = 0; i < ncell; ++i) {
       save_soln(&q[4*i], &qold[4*i]);
     }
-
+    times[0] += clock() - before_clock;
 // predictor/corrector update loop
 
 
     for(int k=0; k<2; k++) {
 
 // calculate area/timstep
-
+      before_clock = clock();
       for (int i = 0; i < ncell; ++i) {
         adt_calc(&x[2*cell[4*i]], &x[2*cell[4*i+1]], &x[2*cell[4*i+2]], &x[2*cell[4*i+3]], &q[4*i], &adt[i]);
       }
-      
+      times[1] += clock() - before_clock;
 
 // calculate flux residual
 
+      before_clock = clock();
       for (int i = 0; i < nedge; ++i) {
         res_calc(&x[2*edge[2*i]], &x[2*edge[2*i+1]], &q[4*ecell[2*i]], &q[4*ecell[2*i+1]], &adt[ecell[2*i]], &adt[ecell[2*i+1]], &res[4*ecell[2*i]], &res[4*ecell[2*i+1]]);
       }
-      
+      times[2] += clock() - before_clock;
+
+      before_clock = clock();
       for (int i = 0; i < nbedge; ++i) {
         bres_calc(&x[2*bedge[2*i]], &x[2*bedge[2*i+1]], &q[4*becell[i]], &adt[becell[i]], &res[4*becell[i]], &bound[i]);
       }
+      times[3] += clock() - before_clock;
+
 
 // update flow field
 
       rms = 0.0;
 
+      before_clock = clock();
       for (int i = 0; i < ncell; ++i) {
         update(&qold[4*i], &q[4*i], &res[4*i], &adt[i], &rms);
       }
+      times[4] += clock() - before_clock;
     }
 
 // print iteration history
@@ -169,5 +178,9 @@ int main(int argc, char **argv){
   
   end = clock();
   printf("time taken: %lf seconds\n", (float)(end - start)/CLOCKS_PER_SEC);
-  
+  printf("save_soln: %lf seconds\n", (float)times[0]/CLOCKS_PER_SEC);
+  printf("adt_calc: %lf seconds\n", (float)times[1]/CLOCKS_PER_SEC);
+  printf("res_calc: %lf seconds\n", (float)times[2]/CLOCKS_PER_SEC);
+  printf("bres_calc: %lf seconds\n", (float)times[3]/CLOCKS_PER_SEC);
+  printf("update: %lf seconds\n", (float)times[4]/CLOCKS_PER_SEC);
 }
