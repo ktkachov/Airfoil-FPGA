@@ -554,7 +554,7 @@ public class ResControlSM extends KernelStateMachine {
 							updateCountsState0();
 						}
 					} ELSE {
-						IF (partition_count >= nParts & streamOutNhd2IhdFinished()) {
+						IF (partition_count > nParts & streamOutNhd2IhdFinished()) {
 							finished.next <== true;
 						}
 						IF (streamInNhd1IhdFinished() & streamOutNhd2IhdFinished()) {
