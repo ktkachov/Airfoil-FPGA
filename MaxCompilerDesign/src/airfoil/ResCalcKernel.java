@@ -183,12 +183,15 @@ public class ResCalcKernel extends Kernel {
 
 		HWVar finished = control_sm.getOutput("finished");
 		debug.printf("====SM_finished? %d====\n", finished);
-		cparams = control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished & ~read_sizes).withMax(nPaddingSizes).withWrapMode(WrapMode.STOP_AT_MAX);
+		Counter excess_edges = control.count.makeCounter(control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished).withMax(nPaddingEdges).withWrapMode(WrapMode.STOP_AT_MAX));
+		HWVar finished_edges = excess_edges.getCount() >= nPaddingEdges-1;
+
+		cparams = control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished_edges).withMax(nPaddingSizes).withWrapMode(WrapMode.STOP_AT_MAX);
 		Counter excess_sizes = control.count.makeCounter(cparams);
 		Counter excess_nodes = control.count.makeCounter(control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished).withMax(nPaddingNodes).withWrapMode(WrapMode.STOP_AT_MAX));
 		Counter excess_cells = control.count.makeCounter(control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished).withMax(nPaddingCells).withWrapMode(WrapMode.STOP_AT_MAX));
-		Counter excess_edges = control.count.makeCounter(control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished).withMax(nPaddingEdges).withWrapMode(WrapMode.STOP_AT_MAX));
-		Counter excess_res	 = control.count.makeCounter(control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished).withMax(nPaddingRes).withWrapMode(WrapMode.STOP_AT_MAX));
+		Counter excess_res	 = control.count.makeCounter(control.count.makeParams(scalar_size_t.getTotalBits()).withEnable(finished_edges).withMax(nPaddingRes).withWrapMode(WrapMode.STOP_AT_MAX));
+
 
 
 		debug.printf("eSizes: %d/%d, eNodes: %d/%d, eCells: %d/%d, eEdges: %d/%d\n", excess_sizes.getCount(), nPaddingSizes, excess_nodes.getCount(), nPaddingNodes,
@@ -204,7 +207,7 @@ public class ResCalcKernel extends Kernel {
 		}
 
 
-		KStruct size_input = io.input("sizes", size_struct_t, read_sizes | (finished & ~read_sizes & (excess_sizes.getCount() < nPaddingSizes)));
+		KStruct size_input = io.input("sizes", size_struct_t, read_sizes | (finished_edges & (excess_sizes.getCount() < nPaddingSizes)));
 //		KStruct size_input = io.input("sizes", size_struct_t, read_sizes );
 		debug.printf("Read sizes %d\n", read_sizes);
 
@@ -215,7 +218,7 @@ public class ResCalcKernel extends Kernel {
 
 		KStruct node_input_dram = io.input("node_input_dram", node_struct_t, read_node | (finished & (excess_nodes.getCount() < nPaddingNodes)));
 		KStruct cell_input_dram = io.input("cell_input_dram", cell_struct_t, read_cell | (finished & (excess_cells.getCount() < nPaddingCells)));
-		KStruct edge 			= io.input("addresses", address_struct_t, 	 read_edge | (finished & (excess_edges.getCount() < nPaddingEdges)));
+		KStruct edge 			= io.input("addresses", address_struct_t, 	 read_edge | (finished & (excess_edges.getCount() < nPaddingEdges-1)));
 
 //		KStruct node_input_dram = io.input("node_input_dram", node_struct_t, read_node );
 //		KStruct cell_input_dram = io.input("cell_input_dram", cell_struct_t, read_cell );
@@ -531,7 +534,7 @@ public class ResCalcKernel extends Kernel {
 //		debug.printf(output_halo, "outputting halo: %KObj%\n", res_host_output);
 
 		debug.printf("----------------------------\n");
-		io.output("result_dram", res_dram_output.getType(), output_data | (finished & excess_res.getCount() < nPaddingRes-1)) <== res_dram_output;
+		io.output("result_dram", res_dram_output.getType(), output_data | (finished_edges & excess_res.getCount() < nPaddingRes-1)) <== res_dram_output;
 		io.output("result_pcie", res_dram_output.getType(), output_halo) <== res_host_output;
 	}
 

@@ -1147,6 +1147,8 @@ int main(int argc, char* argv[]) {
     size_vectors[p].nhd2_halo_cells = numCommonElems(&ps[p].iparts[1].cells_g, &ps[p].haloCells);
     size_vectors[p].nhd2_halo_nodes = numCommonElems(&ps[p].iparts[1].nodes_g, &ps[p].haloNodes);
 
+    showSizeVector(&size_vectors[p]);
+
     //size_vectors[p].padding = 0;
     /*showSizeVector(&size_vectors[p]);*/
     for (uint32_t n = 0; n < ps[p].nodesOrdered.len; ++n) {
@@ -1316,7 +1318,7 @@ int main(int argc, char* argv[]) {
   }
 */
   #ifdef RUN_FPGA
-  short isSimulation = 1;
+  short isSimulation = 0;
   if (argc != 2) {
     printf("ERROR: needed device name\n");
     return 1;
@@ -1329,6 +1331,7 @@ int main(int argc, char* argv[]) {
   maxfile = max_maxfile_init_ResCalc();
   printf("Opening device %s ... \n", device_name);
   device = max_open_device(maxfile, device_name);
+  printf("Opened device %s\n", device_name);
   max_set_terminate_on_error(device);
 
   const char* logFile = "/tmp/ResSim.log";
@@ -1392,6 +1395,11 @@ int main(int argc, char* argv[]) {
   printf("Loading size vectors at offset:%ld...\n", offset[3]);
   load_memory(maxfile, device, FPGA_A, size_vectors, offset[3], (padding_sizes + num_parts) * sizeof(*size_vectors));
   offset[4] = offset[3] + (padding_sizes + num_parts) * sizeof(*size_vectors);
+
+  printf("Setting %d nodes in DRAM\n", (padding_nodes + globalNodesScheduled.len));
+  printf("Setting %d cells in DRAM\n", padding_cells + globalCellsScheduled.len);
+  printf("Loading %d edges in DRAM\n", padding_edges + total_edges);
+  printf("Loading %d sizes in DRAM\n", padding_sizes + num_parts);
 
   printf("Setting up memory controller...\n");
   struct max_memory_setting *const ctx = default_max_memory_setting(maxfile);

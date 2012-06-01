@@ -16,10 +16,16 @@ mesh: mesh_part.c airfoil_utils.h airfoil_kernels.h
 mesh_fpga.o: mesh_part.c airfoil_utils.h airfoil_kernels.h
 	$(CC) -c -o $@ -DRUN_FPGA $(CCFLAGS) $(MAXCOMPILER_INC) $(METIS_INC) $< 
 
-mesh_fpga: mesh_fpga.o ResCalc.o
+mesh_fpga_sim: mesh_fpga.o ResCalc.o
+	$(LD) -o $@ $^ -lc $(LDFLAGS) $(METIS_LDINC) $(MAXCOMPILER_LIBS)
+
+mesh_fpga_hw: mesh_fpga.o ResCalcHW.o
 	$(LD) -o $@ $^ -lc $(LDFLAGS) $(METIS_LDINC) $(MAXCOMPILER_LIBS)
 
 ResCalc.o: ResCalcSim.max
+	$(MAXFILECOMPILE) $^ $@ ResCalc
+
+ResCalcHW.o: AirfoilResCalc.max
 	$(MAXFILECOMPILE) $^ $@ ResCalc
 
 airfoil: airfoil.cpp
@@ -36,7 +42,7 @@ graph: meshColoured.svg meshSchedule.svg
 	cp $^ graphs/
 
 clean:
-	rm -f mesh_fpga
+	rm -f mesh_fpga mesh_fpga_hw
 	rm -f mesh
 	rm -f airfoil
 	rm -f *.svg
