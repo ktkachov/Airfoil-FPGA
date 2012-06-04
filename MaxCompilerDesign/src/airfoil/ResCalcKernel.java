@@ -32,7 +32,7 @@ public class ResCalcKernel extends Kernel {
 
 	private final int max_partition_size = 1<<14;
 	private final int halo_size = max_partition_size / 10;
-	private final int arithmeticPipelineLatency = 25;
+	private final int arithmeticPipelineLatency = 18;
 
 	private final int size_width = MathUtils.bitsToAddress(max_partition_size);
 	private final HWType size_width_t = hwUInt(size_width);

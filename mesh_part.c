@@ -155,8 +155,7 @@ typedef struct node_struct_t {
 } __attribute__((packed)) node_struct;
 
 typedef struct res_struct_t {
-  float res1[4];
-  float res2[4];
+  float res[4];
 } __attribute__((packed)) res_struct;
 
 typedef struct internal_partition_struct {
@@ -1318,8 +1317,8 @@ int main(int argc, char* argv[]) {
   }
 */
   #ifdef RUN_FPGA
-  short isSimulation = 0;
-  if (argc != 2) {
+  short isSimulation = argc == 3;
+  if (argc < 2) {
     printf("ERROR: needed device name\n");
     return 1;
   }
@@ -1453,6 +1452,7 @@ int main(int argc, char* argv[]) {
   printf("Expecting %d halo cells as output\n", globalHaloCellsScheduled.len);
   printf("Running FPGA for %d cycles...\n", kernel_cycles);
 
+  time_t fpga_start = clock();
   max_run(device,
           max_input("halo_cells", halo_cells_scheduled, globalHaloCellsScheduled.len * sizeof(*halo_cells_scheduled)),
           max_input("halo_nodes", halo_nodes_scheduled, globalHaloNodesScheduled.len * sizeof(*halo_nodes_scheduled)),
@@ -1460,34 +1460,63 @@ int main(int argc, char* argv[]) {
           max_runfor("ResCalcKernel", kernel_cycles),
           max_end()
          );
+  for (uint32_t i = 0; i < globalHaloCellsScheduled.len; ++i) {
+    res[4*globalHaloCellsScheduled.arr[i]] += res_halo[i].res[0];
+    res[4*globalHaloCellsScheduled.arr[i]+1] += res_halo[i].res[1];
+    res[4*globalHaloCellsScheduled.arr[i]+2] += res_halo[i].res[2];
+    res[4*globalHaloCellsScheduled.arr[i]+3] += res_halo[i].res[3];
+  }
+  
+  time_t fpga_end = clock();
+  printf("time taken %f seconds\n", (float)(end - start)/CLOCKS_PER_SEC);  
 
   printf("Reading out DRAM data...\n");
   res_non_halo = read_memory(maxfile, device, FPGA_A, offset[4], (globalCellsScheduled.len + padding_res) * sizeof(*res_non_halo));
-/*
-  max_run(device,
-          max_input("nodes_from_dram", nodes_scheduled, globalNodesScheduled.len * sizeof(*nodes_scheduled)),
-          max_input("cells_from_dram", cells_scheduled, globalCellsScheduled.len * sizeof(*cells_scheduled)),
-          max_input("addresses_from_dram", globalEdgeStructsScheduled, total_edges * sizeof(*globalEdgeStructsScheduled)),
-          max_input("halo_cells", halo_cells_scheduled, globalHaloCellsScheduled.len * sizeof(*halo_cells_scheduled)),
-          max_input("halo_nodes", halo_nodes_scheduled, globalHaloNodesScheduled.len * sizeof(*halo_nodes_scheduled)),
-          max_input("sizes", size_vectors, num_parts * sizeof(*size_vectors)),
-          max_output("to_dram", res_non_halo, globalCellsScheduled.len * sizeof(*res_non_halo)),
-          max_output("res", res_halo, globalHaloCellsScheduled.len * sizeof(*res_halo)),
-          max_runfor("ResCalcKernel", kernel_cycles),
-          max_end()
-         );
-*/
+  
+  for (uint32_t i = 0; i < globalCellsScheduled.len; ++i) {
+    res[4*globalCellsScheduled.arr[i]] += res_non_halo[i].res[0];
+    res[4*globalCellsScheduled.arr[i]+1] += res_non_halo[i].res[1];
+    res[4*globalCellsScheduled.arr[i]+2] += res_non_halo[i].res[2];
+    res[4*globalCellsScheduled.arr[i]+3] += res_non_halo[i].res[3];
+  }
+  
+  printf("Dumping FPGA res data to res_dump_fpga.dat\n");
+  FILE* res_fp = fopen("res_dump_fpga.dat", "w");
+  for (uint32_t i = 0; i < ncell; ++i) {
+    for (short j = 0; j < 4; ++j) {
+      fprintf(res_fp, "%.10f\n", res[4*i+j]);
+      res[4*i+j] = 0;
+    }
+  }
+  fclose(res_fp);
+ 
   printf("Closing device %s ... \n", device_name);
   max_close_device(device);
   printf("Destroying maxfile ... \n");
   max_destroy(maxfile);
+
+  printf("Computing corresponding res data on CPU...\n");
+  for (int i = 0; i < nedge; ++i) {
+    res_calc(&x[2*edge[2*i]], &x[2*edge[2*i+1]],
+             &q[4*ecell[2*i]], &q[4*ecell[2*i+1]],
+             &adt[ecell[2*i]], &adt[ecell[2*i+1]],
+             &res[4*ecell[2*i]], &res[4*ecell[2*i+1]]
+            );
+  }
+  printf("dumping CPU res data to res_dump_cpu.dat\n");
+  FILE* res_cpu_fp = fopen("res_dump_cpu.dat", "w");
+  for (uint32_t i = 0; i < ncell*4; ++i) {
+    fprintf(res_cpu_fp, "%.10f\n", res[i]);
+  }
+  fclose(res_cpu_fp);
+
   #endif 
   
 }
 
 #ifdef RUN_FPGA
 /*********************************************
- * Implementation of memory access functions *
+ * Implementation of FPGA DRAM access functions *
  *********************************************/
 
 /*

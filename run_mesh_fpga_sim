@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 simName="simA"
 card="MAX3424A"
-make mesh_fpga
+make mesh_fpga_sim
 maxcompilersim -n $simName stop
 maxcompilersim -n $simName -c $card start
-./mesh_fpga ${simName}0:${simName}
-maxcompilersim -n $simName stop
+./mesh_fpga_sim ${simName}0:${simName} sim
+#maxcompilersim -n $simName stop
