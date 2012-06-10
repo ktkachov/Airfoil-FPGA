@@ -63,8 +63,8 @@ static int load_memory(
 #define NODES_PER_PARTITION (CELLS_PER_PARTITION)
 
 /*This depends on the arithmetic pipeline depth on the FPGA*/
-#define PIPELINE_LATENCY 1
-#define NUM_MICRO_PARTITIONS (27 * PIPELINE_LATENCY)
+#define PIPELINE_LATENCY 18
+#define NUM_EDGE_PARTITIONS (2 * PIPELINE_LATENCY)
 
 #define PRIME 60013
 #define SMALL_PRIME 10007
@@ -72,6 +72,7 @@ static int load_memory(
 #define ADDR_T 14
 
 #define NOP_EDGE UINT_MAX
+#define NOP_PARTITION UINT_MAX
 
 /*colourNames is used to create a DOT file that dumps graphs in a renderable format*/
 float gam;
@@ -378,7 +379,20 @@ int sched(uint32_t n, uint32_t* res, uint32_t* count, short* elems, uint32_t** m
   }
 }
 
-uint32_t* scheduleGraph2(ugraph* g, uint32_t interval) {
+uint32_t* scheduleGraph3(ugraph* g, uint32_t interval, uint32_t* nparts) {
+  uint32_t* res = malloc((g->num_nodes+1) * interval * sizeof(*res));
+  *nparts = (g->num_nodes + 1) * interval;
+  for (uint32_t i = 0; i < *nparts; ++i) {
+    res[i] = NOP_PARTITION;
+  }
+  for (uint32_t i = 0; i < g->num_nodes; ++i) {
+    res[i*(interval+1)] = i;
+  }
+  return res;
+}
+
+uint32_t* scheduleGraph2(ugraph* g, uint32_t interval, uint32_t* nparts) {
+  *nparts = g->num_nodes;
   uint32_t* res = malloc(g->num_nodes * sizeof(*res));
   uint32_t count = 0;
   short* elems = calloc(g->num_nodes, sizeof(*elems));
@@ -875,7 +889,7 @@ int main(int argc, char* argv[]) {
       for (uint32_t k = 0; k < ip->cells.len + 1; ++k) {
         pcptr[k] = 4*k;
       }
-      ip->num_micro_partitions = NUM_MICRO_PARTITIONS;
+      ip->num_micro_partitions = NUM_EDGE_PARTITIONS;
       uint32_t* intcpart = malloc((ip->cells.len+1) * sizeof(*intcpart));
       uint32_t* intnpart = malloc(ip->nodes.len * sizeof(*intnpart));
       METIS_PartMeshNodal((int*)&ip->cells.len,(int*)&ip->nodes.len, (int*)pcptr, (int*)ip->c2n, NULL, NULL, (int*)&ip->num_micro_partitions, NULL, NULL, &objval, (int*)intcpart, (int*)intnpart);
@@ -1037,11 +1051,12 @@ int main(int argc, char* argv[]) {
         }
       }
 
-      ps[i].iparts[p].partitionsOrdered = scheduleGraph2(g, PIPELINE_LATENCY);
+      uint32_t num_edge_partitions;
+      ps[i].iparts[p].partitionsOrdered = scheduleGraph3(g, PIPELINE_LATENCY, &num_edge_partitions);
       
       printf("Scheduled partition graph for partition %d of %d is: \n", p, i);
-      printf("is schedule valid? %d\n", validSchedule(g, ps[i].iparts[p].partitionsOrdered , PIPELINE_LATENCY));
-      for (uint32_t j = 0; j < g->num_nodes; ++j) {
+//      printf("is schedule valid? %d\n", validSchedule(g, ps[i].iparts[p].partitionsOrdered , PIPELINE_LATENCY));
+      for (uint32_t j = 0; j < num_edge_partitions; ++j) {
         printf("%d, ", ps[i].iparts[p].partitionsOrdered [j]);
       }
       printf("\n");
@@ -1052,13 +1067,13 @@ int main(int argc, char* argv[]) {
 
       uint32_t* partsOrdered = ps[i].iparts[p].partitionsOrdered;
       uint32_t hMax = 0;
-      for (uint32_t j = 0; j < NUM_MICRO_PARTITIONS; ++j) {
+      for (uint32_t j = 0; j < NUM_EDGE_PARTITIONS; ++j) {
         hMax = ps[i].iparts[p].parts_edges[j].len > hMax ? ps[i].iparts[p].parts_edges[j].len : hMax;
       }
       ps[i].iparts[p].nop_edges = 0;
       for (uint32_t h = 0; h < hMax; ++h) {
-        for (uint32_t pp = 0; pp < NUM_MICRO_PARTITIONS; ++pp) {
-          if (ps[i].iparts[p].parts_edges[partsOrdered[pp]].len <= h) {
+        for (uint32_t pp = 0; pp < num_edge_partitions; ++pp) {
+          if (partsOrdered[pp] == NOP_PARTITION || ps[i].iparts[p].parts_edges[partsOrdered[pp]].len <= h) {
             addToArr(&ps[i].iparts[p].edgesOrdered, NOP_EDGE);
             ps[i].iparts[p].nop_edges++;
           } else {
@@ -1341,7 +1356,7 @@ int main(int argc, char* argv[]) {
 
   printf("Padding data sets...\n");
   int burst_len = max_group_burst_length(maxfile, "cmd_write_dram");
-  uint32_t padding_nodes = 0;
+  uint32_t padding_nodes = 1;
   while (((padding_nodes + globalNodesScheduled.len) * sizeof(*nodes_scheduled)) % burst_len != 0) {
     padding_nodes++;
   }
@@ -1349,7 +1364,7 @@ int main(int argc, char* argv[]) {
   printf("added %d padding nodes\n", padding_nodes);
   nodes_scheduled = realloc(nodes_scheduled, (padding_nodes + globalNodesScheduled.len) * sizeof(*nodes_scheduled));
 
-  uint32_t padding_cells = 0;
+  uint32_t padding_cells = 1;
   while (((padding_cells + globalCellsScheduled.len) * sizeof(*cells_scheduled)) % burst_len != 0) {
     padding_cells++;
   }
@@ -1357,7 +1372,7 @@ int main(int argc, char* argv[]) {
   printf("added %d padding cells\n", padding_cells);
   cells_scheduled = realloc(cells_scheduled, (padding_cells + globalCellsScheduled.len) * sizeof(*cells_scheduled));
 
-  uint32_t padding_edges = 0;
+  uint32_t padding_edges = 1;
   while (((padding_edges + total_edges) * sizeof(*globalEdgeStructsScheduled)) % burst_len != 0) {
     padding_edges++;
   }
@@ -1365,7 +1380,7 @@ int main(int argc, char* argv[]) {
   printf("added %d padding edges\n", padding_edges);
   globalEdgeStructsScheduled = realloc(globalEdgeStructsScheduled, (padding_edges + total_edges) * sizeof(*globalEdgeStructsScheduled));
 
-  uint32_t padding_sizes = 0;
+  uint32_t padding_sizes = 1;
   while(((num_parts + padding_sizes) * sizeof(*size_vectors)) % burst_len != 0) {
     padding_sizes++;
   }
@@ -1468,16 +1483,27 @@ int main(int argc, char* argv[]) {
   }
   
   time_t fpga_end = clock();
-  printf("time taken %f seconds\n", (float)(end - start)/CLOCKS_PER_SEC);  
+  printf("time taken %.10f seconds\n", (float)(fpga_end - fpga_start)/CLOCKS_PER_SEC);  
+
+  FILE* res_fp1 = fopen("res_dump_fpga_pre.dat", "w");
+  for (uint32_t i = 0; i < globalHaloCellsScheduled.len; ++i) {
+    fprintf(res_fp1, "%.10f\n", res_halo[i].res[0]);
+    fprintf(res_fp1, "%.10f\n", res_halo[i].res[1]);
+    fprintf(res_fp1, "%.10f\n", res_halo[i].res[2]);
+    fprintf(res_fp1, "%.10f\n", res_halo[i].res[3]);
+
+  }
+
+  fclose(res_fp1);
 
   printf("Reading out DRAM data...\n");
   res_non_halo = read_memory(maxfile, device, FPGA_A, offset[4], (globalCellsScheduled.len + padding_res) * sizeof(*res_non_halo));
   
   for (uint32_t i = 0; i < globalCellsScheduled.len; ++i) {
-    res[4*globalCellsScheduled.arr[i]] += res_non_halo[i].res[0];
-    res[4*globalCellsScheduled.arr[i]+1] += res_non_halo[i].res[1];
-    res[4*globalCellsScheduled.arr[i]+2] += res_non_halo[i].res[2];
-    res[4*globalCellsScheduled.arr[i]+3] += res_non_halo[i].res[3];
+    res[4*globalCellsScheduled.arr[i]] = res_non_halo[i].res[0];
+    res[4*globalCellsScheduled.arr[i]+1] = res_non_halo[i].res[1];
+    res[4*globalCellsScheduled.arr[i]+2] = res_non_halo[i].res[2];
+    res[4*globalCellsScheduled.arr[i]+3] = res_non_halo[i].res[3];
   }
   
   printf("Dumping FPGA res data to res_dump_fpga.dat\n");

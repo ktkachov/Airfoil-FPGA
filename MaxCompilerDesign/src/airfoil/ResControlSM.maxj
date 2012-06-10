@@ -195,6 +195,7 @@ public class ResControlSM extends KernelStateMachine {
 	private final SMOutput read_node;
 	private final SMOutput partition_count_out;
 	private final SMOutput finished_out;
+	private final SMOutput sm_state;
 
 	private final int addr_width;
 	private final int halo_io_delay;
@@ -281,6 +282,8 @@ public class ResControlSM extends KernelStateMachine {
 		writing_halo	= io.output("writing_halo", smBool());
 		partition_count_out = io.output("partition_count", addr_t);
 		finished_out		= io.output("finished", smBool());
+		sm_state		= io.output("sm_state", smUInt(2));
+
 
 		lat_del_count   = state.value(addr_t, 0);
 
@@ -589,7 +592,7 @@ public class ResControlSM extends KernelStateMachine {
 				}
 
 				CASE (2) {
-					IF (partition_count === nParts) {
+					IF (processNhd2IhdFinished() & streamOutNhd1Finished() & partition_count === nParts) {
 						st.next <== 0;
 						lat_del_count.next <== 0;
 						partition_count.next <== partition_count + 1;
@@ -652,6 +655,7 @@ public class ResControlSM extends KernelStateMachine {
 
 		partition_count_out <== partition_count;
 		finished_out <== finished;
+		sm_state <== st;
 		IF (kernel_running){
 			SWITCH (st) {
 				CASE (0) {

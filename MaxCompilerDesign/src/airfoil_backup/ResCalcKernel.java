@@ -3,11 +3,12 @@
  * */
 
 
-package airfoil;
+package airfoil_backup;
 
 import static utils.Utils.arith_t;
 import static utils.Utils.array2_t;
 import static utils.Utils.array4_t;
+import airfoil.ResControlSM;
 
 import com.maxeler.maxcompiler.v1.kernelcompiler.Kernel;
 import com.maxeler.maxcompiler.v1.kernelcompiler.KernelParameters;
@@ -108,10 +109,6 @@ public class ResCalcKernel extends Kernel {
 		System.err.println("cell_struct width = " + cell_struct_t.getTotalBits());
 		System.err.println("size_struct width = " + size_struct_t.getTotalBits());
 		System.err.println("address_struct type width = " + address_struct_t.getTotalBits());
-		System.err.println("halo ram size = " + halo_size * 2 / 3);
-		System.err.println("part ram size = " + max_partition_size * 2 / 3);
-
-
 
 		HWVar total_count = control.count.simpleCounter(48);
 
@@ -159,14 +156,6 @@ public class ResCalcKernel extends Kernel {
 		control_sm.connectInput("nhd2_halo_cells", (HWVar) sizes.get("nhd2_halo_cells"));
 
 
-		HWVar nhd1_cells = (HWVar)sizes.get("nhd1_cells") - (HWVar)sizes.get("nhd1_halo_cells");
-//		HWVar iph_cells = sizes.get("iph_cells");
-		HWVar nhd2_cells = (HWVar)sizes.get("nhd2_cells") - (HWVar)sizes.get("nhd2_halo_cells");
-		HWVar nhd1_halo_cells = sizes.get("nhd1_halo_cells");
-		HWVar nhd2_halo_cells = sizes.get("nhd2_halo_cells");
-		HWVar iph_cells = (HWVar)sizes.get("halo_cells") - nhd1_halo_cells - nhd2_halo_cells;
-		HWVar iph_non_halo_cells = (HWVar)sizes.get("iph_cells") - ((HWVar)sizes.get("halo_cells") - nhd1_halo_cells - nhd2_halo_cells);
-		HWVar iph_halo_cells = (HWVar) sizes.get("halo_cells") - nhd1_halo_cells - nhd2_halo_cells;
 
 		HWVar valid_partition = (HWVar)sizes["nodes"] !== 0;
 		final int off = sizes_lat + 3;
@@ -180,8 +169,6 @@ public class ResCalcKernel extends Kernel {
 		HWVar output_halo 			= total_count < off ? 0 : stream.offset(control_sm.getOutput("writing_halo"), -off) & kernel_running;
 		HWVar read_host_halo_cell 	= total_count < off ? 0 : stream.offset(control_sm.getOutput("halo_read_cell"), -off) & valid_partition & kernel_running;
 		HWVar read_host_halo_node 	= total_count < off ? 0 : stream.offset(control_sm.getOutput("halo_read_node"), -off) & valid_partition & kernel_running;
-		HWVar sm_state				= total_count < off ? 0 : stream.offset(control_sm.getOutput("sm_state"), -off);
-
 
 
 		Count.Params cparams = control.count.makeParams(48).withEnable(read_cell);
@@ -301,13 +288,13 @@ public class ResCalcKernel extends Kernel {
 		HWVar isNode2Halo = node2_addr > (HWVar)sizes["nodes"];
 		node2_addr = isNode2Halo ? node2_addr - (HWVar)sizes["nodes"] : node2_addr;
 
-		debug.printf(processing, "processing edge:%KObj% | n1H:%d, n2H:%d, c1H:%d, c2H:%d | isNoop:%d\n",
-				edge, isNode1Halo, isNode2Halo, isCell1Halo, isCell2Halo, isNoopEdge);
+//		debug.printf(processing, "processing edge:%KObj% | n1H:%d, n2H:%d, c1H:%d, c2H:%d | isNoop:%d\n",
+//				edge, isNode1Halo, isNode2Halo, isCell1Halo, isCell2Halo, isNoopEdge);
 
 		//RAMs for halo data
 
-		debug.printf(processing, "cell1_addr:%d, cell2_addr:%d, node1_addr:%d, node2_addr:%d\n", cell1_addr, cell2_addr, node1_addr, node2_addr);
-		debug.printf(read_host_halo_cell, "halo_cell: %KObj% @%d\n", cell_data_host, halo_cell_write_count);
+//		debug.printf(processing, "cell1_addr:%d, cell2_addr:%d, node1_addr:%d, node2_addr:%d\n", cell1_addr, cell2_addr, node1_addr, node2_addr);
+//		debug.printf(read_host_halo_cell, "halo_cell: %KObj% @%d\n", cell_data_host, halo_cell_write_count);
 		HWVar halo_cell_ram1_addr = (isCell1Halo ? cell1_addr : 0).cast(halo_addr_t);
 		Mem.RamPortParams<KStruct> halo_cell_ram1_portA_params
 			= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_cell_write_count, cell_struct_t)
@@ -365,7 +352,7 @@ public class ResCalcKernel extends Kernel {
 
 
 		// RAMs for the node data
-		debug.printf(read_node, "node: %KObj%@%d\n", node_input_dram, node_write_count.getCount());
+//		debug.printf(read_node, "node: %KObj%@%d\n", node_input_dram, node_write_count.getCount());
 		Mem.RamPortParams<KStruct> node_ram_portA_params
 			= mem.makeRamPortParams(RamPortMode.READ_WRITE, node_write_count.getCount(), node_struct_t)
 				.withDataIn(node_input_dram)
@@ -383,7 +370,7 @@ public class ResCalcKernel extends Kernel {
 			= mem.ramDualPort(max_partition_size, RamWriteMode.WRITE_FIRST, node_ram_portA_params, node_ram2_portB_params);
 
 		//RAMs for cell data
-		debug.printf(read_cell, "cell: %KObj% @%d\n", cell_input_dram, cell_write_count.getCount());
+//		debug.printf(read_cell, "cell: %KObj% @%d\n", cell_input_dram, cell_write_count.getCount());
 		Mem.RamPortParams<KStruct> cell_ram_portA_params
 		= mem.makeRamPortParams(RamPortMode.READ_WRITE, cell_write_count.getCount(), cell_struct_t)
 			.withDataIn(cell_input_dram)
@@ -412,10 +399,10 @@ public class ResCalcKernel extends Kernel {
 		node1 = isNoopEdge ? noOpNode() : node1;
 		node2 = isNoopEdge ? noOpNode() : node2;
 
-		debug.printf(processing, "processing cell1:%KObj%\n",cell1);
-		debug.printf(processing, "processing cell2:%KObj%\n",cell2);
-		debug.printf(processing, "processing node1:%KObj%\n",node1);
-		debug.printf(processing, "processing node2:%KObj%\n",node2);
+//		debug.printf(processing, "processing cell1:%KObj%\n",cell1);
+//		debug.printf(processing, "processing cell2:%KObj%\n",cell2);
+//		debug.printf(processing, "processing node1:%KObj%\n",node1);
+//		debug.printf(processing, "processing node2:%KObj%\n",node2);
 
 		//The arithmetic pipeline
 		KStruct res_increments
@@ -429,7 +416,7 @@ public class ResCalcKernel extends Kernel {
 				);
 
 
-		debug.printf(processing, "res_increments: %KObj%\n", res_increments);
+//		debug.printf(processing, "res_increments: %KObj%\n", res_increments);
 		KArray<HWVar> previous_res_value_cell1 = array4_t.newInstance(this);
 		KArray<HWVar> previous_res_value_cell2 = array4_t.newInstance(this);
 
@@ -447,280 +434,109 @@ public class ResCalcKernel extends Kernel {
 			zeroes[i] <== arith_t.newInstance(this, 0.0);
 
 		}
-		debug.printf(processing, "new_res1:%KObj%\n", new_res_value_cell1);
-		debug.printf(processing, "new_res2:%KObj%\n", new_res_value_cell2);
+//		debug.printf(processing, "new_res1:%KObj%\n", new_res_value_cell1);
+//		debug.printf(processing, "new_res2:%KObj%\n", new_res_value_cell2);
 
+		Count.Params out_halo_data_count_params
+			= control.count.makeParams(halo_addr_width).withEnable(output_halo).withReset(read_sizes);
+		Counter out_halo_count = control.count.makeCounter(out_halo_data_count_params);
 
-
-
-		HWVar writing_out_up1 = sm_state === 2;
-		HWVar processing_up1  = sm_state === 1;
-		HWVar writing_out_up2 = sm_state === 0;
-		HWVar processing_up2  = sm_state === 2;
 
 		//RAMs for halo res data
 
 		KArray<HWVar> halo_res_ram1_input = isCell1Halo ? new_res_value_cell1 : zeroes;
 		KArray<HWVar> halo_res_ram2_input = isCell2Halo ? new_res_value_cell2 : zeroes;
 
-		HWVar isCell1HaloIPH = (halo_cell_ram1_addr > nhd1_halo_cells.cast(halo_cell_ram1_addr.getType())) & (halo_cell_ram1_addr < (nhd1_halo_cells + iph_halo_cells).cast(halo_cell_ram1_addr.getType()));
-		HWVar isCell2HaloIPH = (halo_cell_ram2_addr > nhd1_halo_cells.cast(halo_cell_ram2_addr.getType())) & (halo_cell_ram2_addr < (nhd1_halo_cells + iph_halo_cells).cast(halo_cell_ram2_addr.getType()));
-
-
-		Count.Params halo_ram1_up1_out_count_params
-			= control.count.makeParams(halo_addr_width).withEnable(output_halo & writing_out_up1).withReset(read_sizes).withMax(nhd1_halo_cells.cast(hwUInt(halo_addr_width)));
-		Counter halo_res_up1_output_count = control.count.makeCounter(halo_ram1_up1_out_count_params);
-
-//isCell1Halo ? processing_up1 & ~isCell1HaloIPH
-
-
-		HWVar addr = (isCell1Halo & processing_up1 & ~isCell1HaloIPH) ? halo_cell_ram1_addr : 0;
-
-
-		Mem.RamPortParams<KArray<HWVar>> halo_res_ram1_upartition1_portA_params
-			= mem.makeRamPortParams(RamPortMode.READ_ONLY, addr, array4_t)
-//				.withWriteEnable(processing & isCell1Halo & ~isNoopEdge & ~isCell1HaloIPH)
-//				.withDataIn(halo_res_ram1_input)
-				;
-		debug.printf("halo_res_ram1_up1_out_portA at address: %d\n",addr);
-
-
-		addr = writing_out_up1 ? halo_res_up1_output_count.getCount() :
-			(stream.offset(isCell1Halo & processing_up1 & ~isCell1HaloIPH ? halo_cell_ram1_addr : 0, -arithmeticPipelineLatency));
-		Mem.RamPortParams<KArray<HWVar>> halo_res_ram1_upartition1_portB_params
-			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
-				.withDataIn(writing_out_up1 ? zeroes : halo_res_ram1_input)
-				.withWriteEnable(writing_out_up1 ? output_halo : stream.offset(isCell1Halo & processing & processing_up1 & ~isNoopEdge & ~isCell1HaloIPH, -arithmeticPipelineLatency))
+		Mem.RamPortParams<KArray<HWVar>> halo_res_ram1_portA_params
+			= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_cell_ram1_addr, array4_t)
+				.withWriteEnable(processing & isCell1Halo & ~isNoopEdge)
+				.withDataIn(halo_res_ram1_input)
 				;
 
-		debug.printf("halo_res_ram1_up1_out_portB at address: %d\n",addr);
-
-		Mem.DualPortMemOutputs<KArray<HWVar>> halo_res_ram1_upartition1_output
-			= mem.ramDualPort(halo_size * 2/3, RamWriteMode.READ_FIRST, halo_res_ram1_upartition1_portA_params, halo_res_ram1_upartition1_portB_params);
-
-
-
-		addr = (isCell2Halo & processing_up1 & ~isCell2HaloIPH) ? 0 : halo_cell_ram2_addr;
-		Mem.RamPortParams<KArray<HWVar>> halo_res_ram2_upartition1_portA_params
-			= mem.makeRamPortParams(RamPortMode.READ_ONLY, addr, array4_t)
-//				.withWriteEnable(processing & isCell2Halo & ~isNoopEdge)
-//				.withDataIn(halo_res_ram2_input)
+		Mem.RamPortParams<KArray<HWVar>> halo_res_ram1_portB_params
+			= mem.makeRamPortParams(RamPortMode.READ_WRITE, out_halo_count.getCount(), array4_t)
+				.withDataIn(zeroes)
+				.withWriteEnable(output_halo)
 				;
-		debug.printf("halo_res_ram2_up1_out_portA at address: %d\n",addr);
 
-		addr =  writing_out_up1 ? halo_res_up1_output_count.getCount() :
-			stream.offset(isCell2Halo & processing_up1 & ~isCell2HaloIPH ? halo_cell_ram2_addr: 0, -arithmeticPipelineLatency);
-		Mem.RamPortParams<KArray<HWVar>> halo_res_ram2_upartition1_portB_params
-			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
-				.withDataIn(writing_out_up1 ? zeroes : halo_res_ram2_input)
-				.withWriteEnable(writing_out_up1 ? output_halo : stream.offset((processing_up1 ? processing & isCell2Halo & ~isNoopEdge & ~isCell2HaloIPH : 0), -arithmeticPipelineLatency))
+		Mem.DualPortMemOutputs<KArray<HWVar>> halo_res_ram1_output
+			= mem.ramDualPort(halo_size, RamWriteMode.READ_FIRST, halo_res_ram1_portA_params, halo_res_ram1_portB_params);
+
+
+
+		Mem.RamPortParams<KArray<HWVar>> halo_res_ram2_portA_params
+			= mem.makeRamPortParams(RamPortMode.READ_WRITE, halo_cell_ram2_addr, array4_t)
+				.withWriteEnable(processing & isCell2Halo & ~isNoopEdge)
+				.withDataIn(halo_res_ram2_input)
+				;
+
+		Mem.RamPortParams<KArray<HWVar>> halo_res_ram2_portB_params
+			= mem.makeRamPortParams(RamPortMode.READ_WRITE, out_halo_count.getCount(), array4_t)
+			.withDataIn(zeroes)
+			.withWriteEnable(output_halo)
 			;
 
-		debug.printf("halo_res_ram2_up1_out_portB at address: %d\n",addr);
-
-
-		Mem.DualPortMemOutputs<KArray<HWVar>> halo_res_upartition1_ram2_output
-			= mem.ramDualPort(halo_size * 2/3, RamWriteMode.READ_FIRST, halo_res_ram2_upartition1_portA_params, halo_res_ram2_upartition1_portB_params);
+		Mem.DualPortMemOutputs<KArray<HWVar>> halo_res_ram2_output
+			= mem.ramDualPort(halo_size, RamWriteMode.READ_FIRST, halo_res_ram2_portA_params, halo_res_ram2_portB_params);
 
 
 
 
-		Count.Params halo_ram_up2_out_count_params
-			= control.count.makeParams(halo_addr_width).withEnable(output_halo & writing_out_up2).withReset(read_sizes).withMax((nhd2_halo_cells + iph_halo_cells).cast(hwUInt(halo_addr_width)));
-		Counter halo_res_up2_output = control.count.makeCounter(halo_ram_up2_out_count_params);
-
-
-
-		HWVar halo_cell_ram1_up2_addr = (isCell1Halo & (processing_up2 | isCell1HaloIPH)) ? halo_cell_ram1_addr - nhd1_halo_cells.cast(halo_cell_ram1_addr.getType()) : halo_cell_ram1_addr;
-		HWVar halo_cell_ram2_up2_addr = (isCell2Halo & (processing_up2 | isCell2HaloIPH)) ? halo_cell_ram2_addr - nhd1_halo_cells.cast(halo_cell_ram2_addr.getType()) : halo_cell_ram2_addr;
-
-
-		//isCell1Halo & (processing_up2 | isCell1HaloIPH)
-
-		addr = halo_cell_ram1_up2_addr;
-		Mem.RamPortParams<KArray<HWVar>> halo_res_ram1_upartition2_portA_params
-			= mem.makeRamPortParams(RamPortMode.READ_ONLY, halo_cell_ram1_up2_addr, array4_t)
-//			.withWriteEnable(processing & isCell1Halo & ~isNoopEdge & isCell1HaloIPH)
-//			.withDataIn(halo_res_ram1_input)
-			;
-		debug.printf("hale_res_ram1_up2_portA addr: %d\n", addr);
-
-
-		addr = writing_out_up2 ? halo_res_up2_output.getCount() : (stream.offset((isCell1Halo & (processing_up2 | isCell1HaloIPH)) ? halo_cell_ram1_up2_addr : 0, -arithmeticPipelineLatency));
-		Mem.RamPortParams<KArray<HWVar>> halo_res_ram1_upartition2_portB_params
-			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
-				.withDataIn(writing_out_up2 ? zeroes : halo_res_ram1_input)
-				.withWriteEnable(writing_out_up2 ? output_halo : stream.offset((isCell1Halo & (processing_up2 | isCell1HaloIPH) & processing & ~isNoopEdge), -arithmeticPipelineLatency))
-				;
-
-		Mem.DualPortMemOutputs<KArray<HWVar>> halo_res_ram1_upartition2_output
-			= mem.ramDualPort(halo_size * 2/3, RamWriteMode.READ_FIRST, halo_res_ram1_upartition2_portA_params, halo_res_ram1_upartition2_portB_params);
-
-		debug.printf("halo_res_ram1_up2_portB at address: %d\n", addr);
-
-
-
-		addr = halo_cell_ram2_up2_addr;
-		Mem.RamPortParams<KArray<HWVar>> halo_res_ram2_upartition2_portA_params
-			= mem.makeRamPortParams(RamPortMode.READ_ONLY, addr, array4_t)
-//				.withWriteEnable(processing & isCell2Halo & ~isNoopEdge)
-//				.withDataIn(halo_res_ram2_input)
-				;
-		debug.printf("halo_res_ram2_up2_portA at address: %d\n", addr);
-
-
-		addr = writing_out_up2 ? halo_res_up2_output.getCount() : stream.offset((isCell2Halo & (processing_up2 | isCell2HaloIPH)) ? halo_cell_ram2_up2_addr : 0, -arithmeticPipelineLatency);
-		Mem.RamPortParams<KArray<HWVar>> halo_res_ram2_upartition2_portB_params
-			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
-				.withDataIn(writing_out_up2 ? zeroes : halo_res_ram2_input)
-				.withWriteEnable(writing_out_up2 ? output_halo : stream.offset((isCell1Halo & (processing_up2 | isCell1HaloIPH) & processing & isCell2Halo & ~isNoopEdge), -arithmeticPipelineLatency))
-			;
-		debug.printf("halo_res_ram2_up2_portB at address: %d\n", addr);
-
-
-		Mem.DualPortMemOutputs<KArray<HWVar>> halo_res_upartition2_ram2_output
-			= mem.ramDualPort(halo_size * 2/3, RamWriteMode.READ_FIRST, halo_res_ram2_upartition2_portA_params, halo_res_ram2_upartition2_portB_params);
-
-
-
+		Count.Params out_cell_count_params
+			= control.count.makeParams(addr_width).withEnable(output_data).withReset(read_sizes);
+		Counter out_cell_count = control.count.makeCounter(out_cell_count_params);
 
 		//RAMs for partition res data
 
-		HWVar isCell1NhIPH = (cell1_addr > nhd1_cells) & (cell1_addr < nhd1_cells + iph_non_halo_cells);
-		HWVar isCell2NhIPH = (cell2_addr > nhd1_cells) & (cell2_addr < nhd1_cells + iph_non_halo_cells);
 
-		debug.printf(processing, "isCell1HIPH: %d, isCell2HIPH: %d, isCell1NhIPH: %d, isCell2NhIPH: %d\n", isCell1HaloIPH, isCell2HaloIPH, isCell1NhIPH, isCell2NhIPH);
-
-
-		//~isCell1Halo & (processing_up1 & ~isCell1NhIPH)
-		Count.Params res_up1_out_count_params
-			= control.count.makeParams(addr_width).withEnable(output_data & writing_out_up1).withReset(read_sizes).withMax(nhd1_cells.cast(hwUInt(addr_width)));
-		Counter res_up1_out_count = control.count.makeCounter(res_up1_out_count_params);
-
-		addr = (~isCell1Halo & (processing_up1 & ~isCell1NhIPH)) ? cell1_addr.cast(addr_t) : 0;
-		Mem.RamPortParams<KArray<HWVar>> res_ram1_upartition1_portA_params
-			= mem.makeRamPortParams(RamPortMode.READ_ONLY, addr, array4_t)
-//				.withDataIn(new_res_value_cell1)
-//				.withWriteEnable(~isCell1Halo & processing & ~isNoopEdge & processing_up1)
+		Mem.RamPortParams<KArray<HWVar>> res_ram1_portA_params
+			= mem.makeRamPortParams(RamPortMode.READ_WRITE, cell1_addr.cast(addr_t), array4_t)
+				.withDataIn(new_res_value_cell1)
+				.withWriteEnable(~isCell1Halo & processing & ~isNoopEdge)
 			;
-		debug.printf("res_ram1_up1_out_portA at address: %d\n", addr);
 
-
-		addr = writing_out_up1 ? res_up1_out_count.getCount() : stream.offset(~isCell1Halo & (processing_up1 & ~isCell1NhIPH) ? cell1_addr.cast(addr_t) : 0, -arithmeticPipelineLatency);
-		Mem.RamPortParams<KArray<HWVar>> res_ram1_upartition1_portB_params
-			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
-				.withDataIn(writing_out_up1 ? zeroes : new_res_value_cell1)
-				.withWriteEnable(writing_out_up1 ? output_data : stream.offset((~isCell1Halo & (processing_up1 & ~isCell1NhIPH) & processing & ~isNoopEdge), -arithmeticPipelineLatency))
+		Mem.RamPortParams<KArray<HWVar>> res_ram1_portB_params
+			= mem.makeRamPortParams(RamPortMode.READ_WRITE, out_cell_count.getCount(), array4_t)
+				.withDataIn(zeroes)
+				.withWriteEnable(output_data)
 				;
-		DualPortMemOutputs<KArray<HWVar>> res_ram1_upartition1_output
-			= mem.ramDualPort(max_partition_size * 2/3, RamWriteMode.READ_FIRST, res_ram1_upartition1_portA_params, res_ram1_upartition1_portB_params);
-
-		debug.printf("res_ram1_up1_out_portB at address: %d\n", addr);
+		DualPortMemOutputs<KArray<HWVar>> res_ram1_output
+			= mem.ramDualPort(max_partition_size, RamWriteMode.READ_FIRST, res_ram1_portA_params, res_ram1_portB_params);
 
 
-		addr = (~isCell2Halo & (processing_up1 & ~isCell2NhIPH)) ? cell2_addr.cast(addr_t) : 0;
-		Mem.RamPortParams<KArray<HWVar>> res_ram2_upartition1_portA_params
-			= mem.makeRamPortParams(RamPortMode.READ_ONLY, addr, array4_t)
-//			.withDataIn(new_res_value_cell2)
-//			.withWriteEnable(~isCell2Halo & processing & ~isNoopEdge)
+		Mem.RamPortParams<KArray<HWVar>> res_ram2_portA_params
+			= mem.makeRamPortParams(RamPortMode.READ_WRITE, cell2_addr.cast(addr_t), array4_t)
+			.withDataIn(new_res_value_cell2)
+			.withWriteEnable(~isCell2Halo & processing & ~isNoopEdge)
 		;
-		debug.printf("res_ram2_up1_out_portA at address: %d\n", addr);
-
-
-		addr = writing_out_up1 ? res_up1_out_count.getCount() : stream.offset((~isCell2Halo & (processing_up1 & ~isCell2NhIPH)) ? cell2_addr.cast(addr_t): 0, -arithmeticPipelineLatency);
-		Mem.RamPortParams<KArray<HWVar>> res_ram2_upartition1_portB_params
-			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
-				.withDataIn(writing_out_up1 ? zeroes : new_res_value_cell2)
-				.withWriteEnable(writing_out_up1 ? output_data : stream.offset((~isCell2Halo & (processing_up1 & ~isCell2NhIPH) & processing & ~isNoopEdge & ~isCell2NhIPH), -arithmeticPipelineLatency))
+		Mem.RamPortParams<KArray<HWVar>> res_ram2_portB_params
+			= mem.makeRamPortParams(RamPortMode.READ_WRITE, out_cell_count.getCount(), array4_t)
+				.withDataIn(zeroes)
+				.withWriteEnable(output_data)
 				;
-		DualPortMemOutputs<KArray<HWVar>> res_ram2_upartition1_output
-			= mem.ramDualPort(max_partition_size * 2/3, RamWriteMode.READ_FIRST, res_ram2_upartition1_portA_params, res_ram2_upartition1_portB_params);
-
-
-		debug.printf("res_ram2_up1_out_portB: %d\n", addr);
-
-
-//~isCell1Halo & (processing_up2 | isCell1NhIPH)
-	//RAMs for partition res up2 data
-		Count.Params res_up2_out_count_params
-			= control.count.makeParams(addr_width).withEnable(output_data & writing_out_up2).withReset(read_sizes).withMax((nhd2_cells + iph_non_halo_cells).cast(hwUInt(addr_width)));
-		Counter res_up2_out_count = control.count.makeCounter(res_up2_out_count_params);
-
-		HWVar res_ram1_up2_addr = (~isCell1Halo & (processing_up2 | isCell1NhIPH)) ? cell1_addr.cast(addr_t) - nhd1_cells : cell1_addr.cast(addr_t) ;
-
-
-		Mem.RamPortParams<KArray<HWVar>> res_ram1_upartition2_portA_params
-			= mem.makeRamPortParams(RamPortMode.READ_ONLY, res_ram1_up2_addr, array4_t)
-	//			.withDataIn(new_res_value_cell1)
-	//			.withWriteEnable(~isCell1Halo & processing & ~isNoopEdge)
-			;
-		debug.printf("res_ram1_up2_out_portA at address: %d\n", res_ram1_up2_addr);
-
-
-		addr = writing_out_up2 ? res_up2_out_count.getCount() : stream.offset((~isCell1Halo & (processing_up2 | isCell1NhIPH)) ? res_ram1_up2_addr : 0, -arithmeticPipelineLatency);
-		Mem.RamPortParams<KArray<HWVar>> res_ram1_upartition2_portB_params
-			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
-				.withDataIn(writing_out_up2 ? zeroes : new_res_value_cell1)
-				.withWriteEnable(writing_out_up2 ? output_data : stream.offset((~isCell1Halo & (processing_up2 | isCell1NhIPH) & processing & ~isNoopEdge), -arithmeticPipelineLatency))
-				;
-		DualPortMemOutputs<KArray<HWVar>> res_ram1_upartition2_output
-			= mem.ramDualPort(max_partition_size * 2/3, RamWriteMode.READ_FIRST, res_ram1_upartition2_portA_params, res_ram1_upartition2_portB_params);
-
-		debug.printf("res_ram1_up2_out_portB at address: %d\n", addr);
-
-
-		HWVar res_ram2_up2_addr = (~isCell2Halo & (processing_up2 | isCell2NhIPH)) ? cell2_addr.cast(addr_t) - nhd1_cells : cell2_addr.cast(addr_t);
-		Mem.RamPortParams<KArray<HWVar>> res_ram2_upartition2_portA_params
-			= mem.makeRamPortParams(RamPortMode.READ_ONLY, res_ram2_up2_addr, array4_t)
-//			.withDataIn(new_res_value_cell2)
-//			.withWriteEnable(~isCell2Halo & processing & ~isNoopEdge)
-		;
-		debug.printf("res_ram2_up2_out_portA at address: %d\n", res_ram2_up2_addr);
-
-
-		addr = writing_out_up2 ? res_up2_out_count.getCount() : stream.offset((~isCell2Halo & (processing_up2 | isCell2NhIPH)) ? res_ram2_up2_addr : 0, -arithmeticPipelineLatency);
-		Mem.RamPortParams<KArray<HWVar>> res_ram2_upartition2_portB_params
-			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
-				.withDataIn(writing_out_up2 ? zeroes : new_res_value_cell2)
-				.withWriteEnable(writing_out_up2 ? output_data : stream.offset((~isCell2Halo & (processing_up2 | isCell2NhIPH) & processing & ~isNoopEdge), -arithmeticPipelineLatency))
-				;
-		debug.printf("res_ram2_up2_out_portB at address: %d\n", addr);
-
-
-		DualPortMemOutputs<KArray<HWVar>> res_ram2_upartition2_output
-			= mem.ramDualPort(max_partition_size * 2/3, RamWriteMode.READ_FIRST, res_ram2_upartition2_portA_params, res_ram2_upartition2_portB_params);
+		DualPortMemOutputs<KArray<HWVar>> res_ram2_output
+			= mem.ramDualPort(max_partition_size, RamWriteMode.READ_FIRST, res_ram2_portA_params, res_ram2_portB_params);
 
 
 
-		KArray<HWVar> pres_val_c1 = isCell1Halo ? ((processing_up1 & ~isCell1HaloIPH) ? halo_res_ram1_upartition1_output.getOutputA() : halo_res_ram1_upartition2_output.getOutputA())
-											 : ((processing_up1 & ~isCell1NhIPH) ? res_ram1_upartition1_output.getOutputA() : res_ram1_upartition2_output.getOutputA())
-											 ;
-
-		KArray<HWVar> pres_val_c2 =	isCell1Halo ? ((processing_up1 & ~isCell2HaloIPH) ? halo_res_upartition1_ram2_output.getOutputA() : halo_res_upartition2_ram2_output.getOutputA())
-				 								: ((processing_up1 & ~isCell2NhIPH) ? res_ram2_upartition1_output.getOutputA() : res_ram2_upartition2_output.getOutputA())
-				 								;
 		//Connect stream offsets to create the loops
-		previous_res_value_cell1 <== stream.offset(pres_val_c1, -arithmeticPipelineLatency);
-		previous_res_value_cell2 <== stream.offset(pres_val_c2, -arithmeticPipelineLatency);
+		previous_res_value_cell1 <== stream.offset(isCell1Halo ? halo_res_ram1_output.getOutputA() : res_ram1_output.getOutputA(), -arithmeticPipelineLatency);
+		previous_res_value_cell2 <== stream.offset(isCell2Halo ? halo_res_ram2_output.getOutputA() : res_ram2_output.getOutputA(), -arithmeticPipelineLatency);
 
 
-		KArray<HWVar> dram_up1_output = array4_t.newInstance(this);
-		KArray<HWVar> host_up1_output = array4_t.newInstance(this);
-		KArray<HWVar> dram_up2_output = array4_t.newInstance(this);
-		KArray<HWVar> host_up2_output = array4_t.newInstance(this);
+		KArray<HWVar> res_dram_output = array4_t.newInstance(this);
+		KArray<HWVar> res_host_output = array4_t.newInstance(this);
 
-		for (int i = 0; i < dram_up1_output.getSize(); ++i) {
-			dram_up1_output[i] <== res_ram1_upartition1_output.getOutputB()[i] + res_ram2_upartition1_output.getOutputB()[i];
-			host_up1_output[i] <== halo_res_ram1_upartition1_output.getOutputB()[i] + halo_res_upartition1_ram2_output.getOutputB()[i];
-			dram_up2_output[i] <== res_ram1_upartition2_output.getOutputB()[i] + res_ram2_upartition2_output.getOutputB()[i];
-			host_up2_output[i] <== halo_res_ram1_upartition2_output.getOutputB()[i] + halo_res_upartition2_ram2_output.getOutputB()[i];
+		for (int i = 0; i < res_dram_output.getSize(); ++i) {
+			res_dram_output[i] <== res_ram1_output.getOutputB()[i] + res_ram2_output.getOutputB()[i];
+			res_host_output[i] <== halo_res_ram1_output.getOutputB()[i] + halo_res_ram2_output.getOutputB()[i];
 		}
-		debug.printf(output_data, "outputting dram: %KObj%\n", writing_out_up1 ? dram_up1_output : dram_up2_output);
-		debug.printf(output_halo, "outputting halo: %KObj%\n", writing_out_up1 ? host_up1_output : host_up2_output);
+//		debug.printf(output_data, "outputting dram: %KObj%\n", res_dram_output);
+//		debug.printf(output_halo, "outputting halo: %KObj%\n", res_host_output);
 
 		debug.printf("----------------------------\n");
-		io.output("result_dram", dram_up1_output.getType(), output_data | (finished_edges & excess_res.getCount() < nPaddingRes-1)) <== writing_out_up1 ? dram_up1_output : dram_up2_output;
-		io.output("result_pcie", dram_up1_output.getType(), output_halo) <== writing_out_up1 ? host_up1_output : host_up2_output;
+		io.output("result_dram", res_dram_output.getType(), output_data | (finished_edges & excess_res.getCount() < nPaddingRes-1)) <== res_dram_output;
+		io.output("result_pcie", res_dram_output.getType(), output_halo) <== res_host_output;
 	}
 
 
@@ -738,11 +554,11 @@ public class ResCalcKernel extends Kernel {
 		HWVar dx = x1[0] - x2[0];
 		HWVar dy = x1[1] - x2[1];
 		HWVar ri = 1.0f / q1[0];
-		HWVar p1 = gm1 * (q1[3] - 0.5f*ri*( q1[1]*q1[1] + q1[2]*q1[2] ) );
+		HWVar p1 = gm1 * (q1[3] - 0.5f*ri*( q1[1] * q1[1] + q1[2] * q1[2]) );
 		HWVar vol1 = ri * (q1[1]*dy - q1[2]*dx);
 
-		ri = 1.0f / q2[0];
-		HWVar p2 = gm1 * (q2[3] - 0.5f*ri*( q2[1]*q2[1] + q2[2]*q2[2] ) );
+		ri = 1.0f / q1[0];
+		HWVar p2 = gm1*(q2[3]-0.5f*ri*(q2[1]*q2[1]+q2[2]*q2[2]));
 		HWVar vol2 = ri*(q2[1]*dy - q2[2]*dx);
 
 		KStruct result = res_struct_t.newInstance(this);
