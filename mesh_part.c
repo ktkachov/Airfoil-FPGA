@@ -64,7 +64,7 @@ static int load_memory(
 
 /*This depends on the arithmetic pipeline depth on the FPGA*/
 #define PIPELINE_LATENCY 18
-#define NUM_EDGE_PARTITIONS (2 * PIPELINE_LATENCY)
+#define NUM_EDGE_PARTITIONS (10 * PIPELINE_LATENCY)
 
 #define PRIME 60013
 #define SMALL_PRIME 10007
@@ -286,6 +286,28 @@ void colourGraph(ugraph* graph) {
   graph->num_colours = ncolours-1;
 }
 
+colour_list* toColourList(ugraph* g) {
+  uint32_t** nodes = malloc(g->num_colours * sizeof(*nodes));
+  uint32_t* sizes = calloc(g->num_colours, sizeof(*sizes));
+  for (uint32_t n = 0; n < g->num_nodes; ++n) {
+    ++sizes[g->colours[n]];
+  }
+  for (uint32_t c = 0; c < g->num_colours; ++c) {
+    nodes[c] = malloc(sizes[c] * sizeof(nodes[c]));
+  }
+  uint32_t* counts = calloc(g->num_colours, sizeof(*counts));
+
+  for (uint32_t n = 0; n < g->num_nodes; ++n) {
+    nodes[g->colours[n]][counts[g->colours[n]]++] = n;
+  }
+  colour_list* res = malloc(sizeof(*res));
+  res->nodes = nodes;
+  res->sizes = sizes;
+  res->num_colours = g->num_colours;
+  free(counts);
+  return res;
+}
+
 uint32_t** toAdjacencyMatrix(ugraph* g) {
   uint32_t** mat = malloc(g->num_nodes * sizeof(*mat));
   for (uint32_t i = 0; i < g->num_nodes; ++i) {
@@ -379,6 +401,40 @@ int sched(uint32_t n, uint32_t* res, uint32_t* count, short* elems, uint32_t** m
   }
 }
 
+// typedef struct colour_list_struct {
+//   uint32_t** nodes;
+//   uint32_t num_colours;
+//   uint32_t* sizes;
+// } colour_list;
+
+
+uint32_t* scheduleGraph4(ugraph* g, uint32_t interval, uint32_t* nparts) {
+  if (!g->colours) {
+    colourGraph(g);
+  }
+  colour_list* cl = toColourList(g);
+//   uint32_t* res = malloc((g->num_nodes+1) * interval * sizeof(*res));
+//   *nparts = (g->num_nodes + 1) * interval;
+//   uint32_t* nop_part_histogram = calloc(g->num_colours, sizeof(*colour_histogram));
+
+  *nparts = g->num_nodes + g->num_colours * interval;
+
+  uint32_t* res = malloc(*nparts * sizeof(*res));
+  uint32_t p = 0;
+  for (uint32_t i = 0; i < g->num_colours; ++i) {
+    for (uint32_t j = 0; j < cl->sizes[i]; ++j) {
+      res[p++] = cl->nodes[i][j];
+    }
+    for (uint32_t j = 0; j < interval; ++j) {
+      res[p++] = NOP_PARTITION;
+    }
+  }
+  free(cl);
+  return res;
+}
+
+
+
 uint32_t* scheduleGraph3(ugraph* g, uint32_t interval, uint32_t* nparts) {
   uint32_t* res = malloc((g->num_nodes+1) * interval * sizeof(*res));
   *nparts = (g->num_nodes + 1) * interval;
@@ -466,27 +522,7 @@ uint32_t* scheduleGraph(ugraph* g, uint32_t interval) {
   return NULL;
 }
 
-colour_list* toColourList(ugraph* g) {
-  uint32_t** nodes = malloc(g->num_colours * sizeof(*nodes));
-  uint32_t* sizes = calloc(g->num_colours, sizeof(*sizes));
-  for (uint32_t n = 0; n < g->num_nodes; ++n) {
-    ++sizes[g->colours[n]];
-  }
-  for (uint32_t c = 0; c < g->num_colours; ++c) {
-    nodes[c] = malloc(sizes[c] * sizeof(nodes[c]));
-  }
-  uint32_t* counts = calloc(g->num_colours, sizeof(*counts));
 
-  for (uint32_t n = 0; n < g->num_nodes; ++n) {
-    nodes[g->colours[n]][counts[g->colours[n]]++] = n;
-  }
-  colour_list* res = malloc(sizeof(*res));
-  res->nodes = nodes;
-  res->sizes = sizes;
-  res->num_colours = g->num_colours;
-  free(counts);
-  return res;
-}
 
 inline void printarray(float* data, uint32_t len, const char* file_name) {
   FILE* flog;
@@ -1052,7 +1088,7 @@ int main(int argc, char* argv[]) {
       }
 
       uint32_t num_edge_partitions;
-      ps[i].iparts[p].partitionsOrdered = scheduleGraph3(g, PIPELINE_LATENCY, &num_edge_partitions);
+      ps[i].iparts[p].partitionsOrdered = scheduleGraph4(g, PIPELINE_LATENCY, &num_edge_partitions);
       
       printf("Scheduled partition graph for partition %d of %d is: \n", p, i);
 //      printf("is schedule valid? %d\n", validSchedule(g, ps[i].iparts[p].partitionsOrdered , PIPELINE_LATENCY));
@@ -1485,7 +1521,7 @@ int main(int argc, char* argv[]) {
   time_t fpga_end = clock();
   printf("time taken %.10f seconds\n", (float)(fpga_end - fpga_start)/CLOCKS_PER_SEC);  
 
-  FILE* res_fp1 = fopen("res_dump_fpga_pre.dat", "w");
+  FILE* res_fp1 = fopen("res_dump_fpga_pcie.dat", "w");
   for (uint32_t i = 0; i < globalHaloCellsScheduled.len; ++i) {
     fprintf(res_fp1, "%.10f\n", res_halo[i].res[0]);
     fprintf(res_fp1, "%.10f\n", res_halo[i].res[1]);
