@@ -453,7 +453,7 @@ public class ResCalcKernel extends Kernel {
 		debug.printf(processing, "new_res2:%KObj%\n", new_res_value_cell2);
 
 
-
+		int res_ram_offset = 13;
 
 		HWVar writing_out_up1 = sm_state === 2;
 		HWVar writing_out_up2 = sm_state === 0;
@@ -491,7 +491,7 @@ public class ResCalcKernel extends Kernel {
 		Mem.RamPortParams<KArray<HWVar>> halo_res_ram1_upartition1_portB_params
 			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
 				.withDataIn(writing_out_up1 ? zeroes : halo_res_ram1_input)
-				.withWriteEnable(writing_out_up1 ? output_halo : stream.offset(isUp1HaloCell1 & processing & ~isNoopEdge, -arithmeticPipelineLatency))
+				.withWriteEnable(writing_out_up1 ? output_halo : stream.offset(isUp1HaloCell1 & processing & ~isNoopEdge, -res_ram_offset))
 				;
 
 		debug.printf("halo_res_ram1_up1_out_portB at address: %d\n",addr);
@@ -514,7 +514,7 @@ public class ResCalcKernel extends Kernel {
 		Mem.RamPortParams<KArray<HWVar>> halo_res_ram2_upartition1_portB_params
 			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
 				.withDataIn(writing_out_up1 ? zeroes : halo_res_ram2_input)
-				.withWriteEnable(writing_out_up1 ? output_halo : stream.offset((isUp1HaloCell2 & processing & ~isNoopEdge), -arithmeticPipelineLatency))
+				.withWriteEnable(writing_out_up1 ? output_halo : stream.offset((isUp1HaloCell2 & processing & ~isNoopEdge), -res_ram_offset))
 			;
 
 		debug.printf("halo_res_ram2_up1_out_portB at address: %d\n",addr);
@@ -547,11 +547,11 @@ public class ResCalcKernel extends Kernel {
 		debug.printf("hale_res_ram1_up2_portA addr: %d\n", addr);
 
 
-		addr = writing_out_up2 ? halo_res_up2_output.getCount() : (stream.offset(addr, -arithmeticPipelineLatency));
+		addr = writing_out_up2 ? halo_res_up2_output.getCount() : (stream.offset(addr, -res_ram_offset));
 		Mem.RamPortParams<KArray<HWVar>> halo_res_ram1_upartition2_portB_params
 			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
 				.withDataIn(writing_out_up2 ? zeroes : halo_res_ram1_input)
-				.withWriteEnable(writing_out_up2 ? output_halo : stream.offset(isUp2HaloCell1 & processing & ~isNoopEdge, -arithmeticPipelineLatency))
+				.withWriteEnable(writing_out_up2 ? output_halo : stream.offset(isUp2HaloCell1 & processing & ~isNoopEdge, -res_ram_offset))
 				;
 
 		Mem.DualPortMemOutputs<KArray<HWVar>> halo_res_ram1_upartition2_output
@@ -570,11 +570,11 @@ public class ResCalcKernel extends Kernel {
 		debug.printf("halo_res_ram2_up2_portA at address: %d\n", addr);
 
 
-		addr = writing_out_up2 ? halo_res_up2_output.getCount() : stream.offset(addr, -arithmeticPipelineLatency);
+		addr = writing_out_up2 ? halo_res_up2_output.getCount() : stream.offset(addr, -res_ram_offset);
 		Mem.RamPortParams<KArray<HWVar>> halo_res_ram2_upartition2_portB_params
 			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
 				.withDataIn(writing_out_up2 ? zeroes : halo_res_ram2_input)
-				.withWriteEnable(writing_out_up2 ? output_halo : stream.offset((isUp2HaloCell2 & processing & ~isNoopEdge), -arithmeticPipelineLatency))
+				.withWriteEnable(writing_out_up2 ? output_halo : stream.offset((isUp2HaloCell2 & processing & ~isNoopEdge), -res_ram_offset))
 			;
 		debug.printf("halo_res_ram2_up2_portB at address: %d\n", addr);
 
@@ -607,11 +607,11 @@ public class ResCalcKernel extends Kernel {
 		debug.printf("res_ram1_up1_out_portA at address: %d\n", addr);
 
 
-		addr = writing_out_up1 ? res_up1_out_count.getCount() : stream.offset(addr, -arithmeticPipelineLatency);
+		addr = writing_out_up1 ? res_up1_out_count.getCount() : stream.offset(addr, -res_ram_offset);
 		Mem.RamPortParams<KArray<HWVar>> res_ram1_upartition1_portB_params
 			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
 				.withDataIn(writing_out_up1 ? zeroes : new_res_value_cell1)
-				.withWriteEnable(writing_out_up1 ? output_data : stream.offset(isUp1Cell1 & processing & ~isNoopEdge, -arithmeticPipelineLatency))
+				.withWriteEnable(writing_out_up1 ? output_data : stream.offset(isUp1Cell1 & processing & ~isNoopEdge, -res_ram_offset))
 				;
 		DualPortMemOutputs<KArray<HWVar>> res_ram1_upartition1_output
 			= mem.ramDualPort(max_partition_size * 2/3, RamWriteMode.READ_FIRST, res_ram1_upartition1_portA_params, res_ram1_upartition1_portB_params);
@@ -628,11 +628,11 @@ public class ResCalcKernel extends Kernel {
 		debug.printf("res_ram2_up1_out_portA at address: %d\n", addr);
 
 
-		addr = writing_out_up1 ? res_up1_out_count.getCount() : stream.offset(addr, -arithmeticPipelineLatency);
+		addr = writing_out_up1 ? res_up1_out_count.getCount() : stream.offset(addr, -res_ram_offset);
 		Mem.RamPortParams<KArray<HWVar>> res_ram2_upartition1_portB_params
 			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
 				.withDataIn(writing_out_up1 ? zeroes : new_res_value_cell2)
-				.withWriteEnable(writing_out_up1 ? output_data : stream.offset(isUp1Cell2 & processing & ~isNoopEdge, -arithmeticPipelineLatency))
+				.withWriteEnable(writing_out_up1 ? output_data : stream.offset(isUp1Cell2 & processing & ~isNoopEdge, -res_ram_offset))
 				;
 		DualPortMemOutputs<KArray<HWVar>> res_ram2_upartition1_output
 			= mem.ramDualPort(max_partition_size * 2/3, RamWriteMode.READ_FIRST, res_ram2_upartition1_portA_params, res_ram2_upartition1_portB_params);
@@ -661,11 +661,11 @@ public class ResCalcKernel extends Kernel {
 		debug.printf("res_ram1_up2_out_portA at address: %d\n", addr);
 
 
-		addr = writing_out_up2 ? res_up2_out_count.getCount() : stream.offset(addr, -arithmeticPipelineLatency);
+		addr = writing_out_up2 ? res_up2_out_count.getCount() : stream.offset(addr, -res_ram_offset);
 		Mem.RamPortParams<KArray<HWVar>> res_ram1_upartition2_portB_params
 			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
 				.withDataIn(writing_out_up2 ? zeroes : new_res_value_cell1)
-				.withWriteEnable(writing_out_up2 ? output_data : stream.offset(isUp2Cell1 & processing & ~isNoopEdge, -arithmeticPipelineLatency))
+				.withWriteEnable(writing_out_up2 ? output_data : stream.offset(isUp2Cell1 & processing & ~isNoopEdge, -res_ram_offset))
 				;
 		DualPortMemOutputs<KArray<HWVar>> res_ram1_upartition2_output
 			= mem.ramDualPort(max_partition_size * 2/3, RamWriteMode.READ_FIRST, res_ram1_upartition2_portA_params, res_ram1_upartition2_portB_params);
@@ -682,11 +682,11 @@ public class ResCalcKernel extends Kernel {
 		debug.printf("res_ram2_up2_out_portA at address: %d\n", addr);
 
 
-		addr = writing_out_up2 ? res_up2_out_count.getCount() : stream.offset(addr, -arithmeticPipelineLatency);
+		addr = writing_out_up2 ? res_up2_out_count.getCount() : stream.offset(addr, -res_ram_offset);
 		Mem.RamPortParams<KArray<HWVar>> res_ram2_upartition2_portB_params
 			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
 				.withDataIn(writing_out_up2 ? zeroes : new_res_value_cell2)
-				.withWriteEnable(writing_out_up2 ? output_data : stream.offset(isUp2Cell2 & processing & ~isNoopEdge, -arithmeticPipelineLatency))
+				.withWriteEnable(writing_out_up2 ? output_data : stream.offset(isUp2Cell2 & processing & ~isNoopEdge, -res_ram_offset))
 				;
 		debug.printf("res_ram2_up2_out_portB at address: %d\n", addr);
 

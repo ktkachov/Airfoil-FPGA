@@ -4,7 +4,6 @@ import com.maxeler.maxcompiler.v1.managers.MAXBoardModel;
 import com.maxeler.maxcompiler.v1.managers.custom.CustomManager;
 import com.maxeler.maxcompiler.v1.managers.custom.Stream;
 import com.maxeler.maxcompiler.v1.managers.custom.blocks.KernelBlock;
-import com.maxeler.maxcompiler.v1.managers.custom.stdlib.DebugLevel;
 import com.maxeler.maxcompiler.v1.managers.custom.stdlib.MemoryControlGroup.MemoryAccessPattern;
 
 public class AirfoilManager extends CustomManager {
@@ -26,9 +25,9 @@ public class AirfoilManager extends CustomManager {
 		Stream addresses_dram = addStreamFromOnCardMemory("addresses_from_dram", MemoryAccessPattern.LINEAR_1D);
 		Stream sizes_dram = addStreamFromOnCardMemory("sizes", MemoryAccessPattern.LINEAR_1D);
 
-		DebugLevel dbgLevel = new DebugLevel();
-		dbgLevel.setHasStreamStatus(true);
-		debug.setDebugLevel(dbgLevel);
+//		DebugLevel dbgLevel = new DebugLevel();
+//		dbgLevel.setHasStreamStatus(true);
+//		debug.setDebugLevel(dbgLevel);
 
 		resCalc.getInput("node_input_dram") <== nodes_dram;
 		resCalc.getInput("cell_input_dram") <== cells_dram;
