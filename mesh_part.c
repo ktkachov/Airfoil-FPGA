@@ -63,8 +63,8 @@ static int load_memory(
 #define NODES_PER_PARTITION (CELLS_PER_PARTITION)
 
 /*This depends on the arithmetic pipeline depth on the FPGA*/
-#define PIPELINE_LATENCY 18
-#define NUM_EDGE_PARTITIONS (10 * PIPELINE_LATENCY)
+#define PIPELINE_LATENCY 0
+#define NUM_EDGE_PARTITIONS (300)
 
 #define PRIME 60013
 #define SMALL_PRIME 10007
@@ -670,6 +670,8 @@ int main(int argc, char* argv[]) {
 
   uint32_t nnode,ncell,nedge,nbedge;
 
+  int num_edge_parts = atoi(argv[1]);
+
   /* read in grid */
 
   printf("reading in grid \n");
@@ -925,7 +927,7 @@ int main(int argc, char* argv[]) {
       for (uint32_t k = 0; k < ip->cells.len + 1; ++k) {
         pcptr[k] = 4*k;
       }
-      ip->num_micro_partitions = NUM_EDGE_PARTITIONS;
+      ip->num_micro_partitions = num_edge_parts;
       uint32_t* intcpart = malloc((ip->cells.len+1) * sizeof(*intcpart));
       uint32_t* intnpart = malloc(ip->nodes.len * sizeof(*intnpart));
       METIS_PartMeshNodal((int*)&ip->cells.len,(int*)&ip->nodes.len, (int*)pcptr, (int*)ip->c2n, NULL, NULL, (int*)&ip->num_micro_partitions, NULL, NULL, &objval, (int*)intcpart, (int*)intnpart);
@@ -1103,7 +1105,7 @@ int main(int argc, char* argv[]) {
 
       uint32_t* partsOrdered = ps[i].iparts[p].partitionsOrdered;
       uint32_t hMax = 0;
-      for (uint32_t j = 0; j < NUM_EDGE_PARTITIONS; ++j) {
+      for (uint32_t j = 0; j < num_edge_parts; ++j) {
         hMax = ps[i].iparts[p].parts_edges[j].len > hMax ? ps[i].iparts[p].parts_edges[j].len : hMax;
       }
       ps[i].iparts[p].nop_edges = 0;
@@ -1266,9 +1268,13 @@ int main(int argc, char* argv[]) {
   printf("Global scheduled nodes:%d, cells: %d\n", globalNodesScheduled.len, globalCellsScheduled.len);
   printf("Global scheduled halo nodes:%d, cells:%d\n", globalHaloNodesScheduled.len, globalHaloCellsScheduled.len);
   printf("Created global schedules, total edges = %d\n", schEdges);
-  printf("ratio of nop edges to edges %.2f, with %d nop edges\n", (float)num_nop_edges / nedge, num_nop_edges);
+  printf("Number of edge partitions per micro-partition: %d\n", num_edge_parts);
+  printf("ratio of nop edges to edges %.5f, with %d nop edges\n", (float)num_nop_edges / nedge, num_nop_edges);
   printf("time taken: %f seconds\n", (float)(end - start)/CLOCKS_PER_SEC);
 
+  FILE* noop_stats_fp = fopen("noop_stats.dat", "a");
+  fprintf(noop_stats_fp, "%d %d %.5f %f\n", num_edge_parts, num_nop_edges, (float)num_nop_edges / nedge, (float)(end - start)/CLOCKS_PER_SEC);
+  fclose(noop_stats_fp);
 
 
   gam = 1.4f;
@@ -1534,7 +1540,17 @@ int main(int argc, char* argv[]) {
 
   printf("Reading out DRAM data...\n");
   res_non_halo = read_memory(maxfile, device, FPGA_A, offset[4], (globalCellsScheduled.len + padding_res) * sizeof(*res_non_halo));
-  
+ 
+
+  FILE* res_dram_fp = fopen("res_dump_fpga_dram.dat", "w");
+  printf("Dumping DRAM data to res_dump_fpga_dram.dat\n");
+  for (uint32_t i = 0; i < globalCellsScheduled.len; ++i) {
+    for (short j = 0; j < 4; ++j) {
+      fprintf(res_dram_fp, "%.10f\n", res_non_halo[i].res[j]);
+    }
+  }
+  fclose(res_dram_fp);
+
   for (uint32_t i = 0; i < globalCellsScheduled.len; ++i) {
     res[4*globalCellsScheduled.arr[i]] = res_non_halo[i].res[0];
     res[4*globalCellsScheduled.arr[i]+1] = res_non_halo[i].res[1];
