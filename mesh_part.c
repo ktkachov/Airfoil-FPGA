@@ -63,7 +63,7 @@ static int load_memory(
 #define NODES_PER_PARTITION (CELLS_PER_PARTITION)
 
 /*This depends on the arithmetic pipeline depth on the FPGA*/
-#define PIPELINE_LATENCY 0
+#define PIPELINE_LATENCY 18
 #define NUM_EDGE_PARTITIONS (300)
 
 #define PRIME 60013
@@ -670,7 +670,8 @@ int main(int argc, char* argv[]) {
 
   uint32_t nnode,ncell,nedge,nbedge;
 
-  int num_edge_parts = atoi(argv[1]);
+  int num_edge_parts = NUM_EDGE_PARTITIONS;
+//  int num_edge_parts = atoi(argv[1]);
 
   /* read in grid */
 
