@@ -475,7 +475,6 @@ public class ResCalcKernel extends Kernel {
 
 //isCell1Halo ? processing_up1 & ~isCell1HaloIPH
 
-
 		HWVar addr = isUp1HaloCell1 ? halo_cell_ram1_addr : 0;
 		Mem.RamPortParams<KArray<HWVar>> halo_res_ram1_upartition1_portA_params
 			= mem.makeRamPortParams(RamPortMode.READ_ONLY, addr, array4_t)
@@ -488,7 +487,7 @@ public class ResCalcKernel extends Kernel {
 		addr = writing_out_up1 ? halo_res_up1_output_count.getCount() : addr;
 
 		Mem.RamPortParams<KArray<HWVar>> halo_res_ram1_upartition1_portB_params
-			= mem.makeRamPortParams(RamPortMode.READ_WRITE, addr, array4_t)
+			= mem.makeRamPortParams(RamPortMode.READ_WRITE, stream.offset(addr, res_ram_offset), array4_t)
 				.withDataIn(writing_out_up1 ? zeroes : halo_res_ram1_input)
 				.withWriteEnable(writing_out_up1 ? output_halo : (isUp1HaloCell1 & processing & ~isNoopEdge))
 				;

@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <time.h>
+#include <sys/time.h>
 #include <string.h>
 #include <stdint.h>
 #include <limits.h>
@@ -64,7 +65,7 @@ static int load_memory(
 
 /*This depends on the arithmetic pipeline depth on the FPGA*/
 #define PIPELINE_LATENCY 18
-#define NUM_EDGE_PARTITIONS (300)
+#define NUM_EDGE_PARTITIONS (100)
 
 #define PRIME 60013
 #define SMALL_PRIME 10007
@@ -73,6 +74,7 @@ static int load_memory(
 
 #define NOP_EDGE UINT_MAX
 #define NOP_PARTITION UINT_MAX
+
 
 /*colourNames is used to create a DOT file that dumps graphs in a renderable format*/
 float gam;
@@ -670,8 +672,8 @@ int main(int argc, char* argv[]) {
 
   uint32_t nnode,ncell,nedge,nbedge;
 
-  int num_edge_parts = NUM_EDGE_PARTITIONS;
-//  int num_edge_parts = atoi(argv[1]);
+//  int num_edge_parts = NUM_EDGE_PARTITIONS;
+  int num_edge_parts = atoi(argv[2]);
 
   /* read in grid */
 
@@ -1508,25 +1510,40 @@ int main(int argc, char* argv[]) {
   printf("Halo cells scheduled: %d\n", globalHaloCellsScheduled.len);
   printf("Halo nodes scheduled: %d\n", globalHaloNodesScheduled.len);
   printf("Expecting %d halo cells as output\n", globalHaloCellsScheduled.len);
-  printf("Running FPGA for %d cycles...\n", kernel_cycles);
+  printf("Running FPGA for %d cycles 2000 times...\n", kernel_cycles);
 
-  time_t fpga_start = clock();
-  max_run(device,
-          max_input("halo_cells", halo_cells_scheduled, globalHaloCellsScheduled.len * sizeof(*halo_cells_scheduled)),
-          max_input("halo_nodes", halo_nodes_scheduled, globalHaloNodesScheduled.len * sizeof(*halo_nodes_scheduled)),
-          max_output("res", res_halo, globalHaloCellsScheduled.len * sizeof(*res_halo)),
-          max_runfor("ResCalcKernel", kernel_cycles),
-          max_end()
-         );
+  struct timeval  tv1, tv2;
+  double fpga_time = 0.0f;
+  gettimeofday(&tv1, NULL);
+
+  for (int i = 0; i < 2000; ++i) {
+
+    max_run(device,
+            max_input("halo_cells", halo_cells_scheduled, globalHaloCellsScheduled.len * sizeof(*halo_cells_scheduled)),
+            max_input("halo_nodes", halo_nodes_scheduled, globalHaloNodesScheduled.len * sizeof(*halo_nodes_scheduled)),
+            max_output("res", res_halo, globalHaloCellsScheduled.len * sizeof(*res_halo)),
+            max_runfor("ResCalcKernel", kernel_cycles),
+            max_end()
+          );
+  }
+
+  gettimeofday(&tv2, NULL);
+  fpga_time = (double) (tv2.tv_usec - tv1.tv_usec)/1000000 +
+             (double) (tv2.tv_sec - tv1.tv_sec);
+  
   for (uint32_t i = 0; i < globalHaloCellsScheduled.len; ++i) {
     res[4*globalHaloCellsScheduled.arr[i]] += res_halo[i].res[0];
     res[4*globalHaloCellsScheduled.arr[i]+1] += res_halo[i].res[1];
     res[4*globalHaloCellsScheduled.arr[i]+2] += res_halo[i].res[2];
     res[4*globalHaloCellsScheduled.arr[i]+3] += res_halo[i].res[3];
   }
-  
-  time_t fpga_end = clock();
-  printf("time taken %.10f seconds\n", (float)(fpga_end - fpga_start)/CLOCKS_PER_SEC);  
+
+ // gettimeofday(&tv2, NULL);
+ // double fpga_time = (double) (tv2.tv_usec - tv1.tv_usec)/1000000 + (double)(tv2.tv_sec - tv2.tv_sec);
+  printf("Time taken %.5f\n", fpga_time);
+  FILE* fpga_time_fp = fopen("fpga_time.dat", "a");
+  fprintf(fpga_time_fp, "%d  %d  %.5f\n", num_edge_parts, num_nop_edges, fpga_time);
+  fclose(fpga_time_fp);
 
   FILE* res_fp1 = fopen("res_dump_fpga_pcie.dat", "w");
   for (uint32_t i = 0; i < globalHaloCellsScheduled.len; ++i) {

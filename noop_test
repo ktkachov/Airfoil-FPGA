@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
 for (( i = 20 ; i <= 1100; i+=20 ))
 do
-  ./mesh $i
+  ./mesh_fpga_hw /dev/maxeler0 $i
 done

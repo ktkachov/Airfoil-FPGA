@@ -1,5 +1,7 @@
 package airfoil;
 
+import com.maxeler.maxcompiler.v1.managers.BuildConfig;
+import com.maxeler.maxcompiler.v1.managers.BuildConfig.Effort;
 import com.maxeler.maxcompiler.v1.managers.MAXBoardModel;
 import com.maxeler.maxcompiler.v1.managers.custom.CustomManager;
 import com.maxeler.maxcompiler.v1.managers.custom.Stream;
@@ -51,11 +53,11 @@ public class AirfoilManager extends CustomManager {
 		Stream fromDram = addStreamFromOnCardMemory("read_dram", MemoryAccessPattern.LINEAR_1D);
 		toHost <== fromDram;
 
-//		BuildConfig bc = getBuildConfig();
-//		bc.setBuildEffort(Effort.VERY_HIGH);
-//		bc.setMPPRCostTableSearchRange(1, 10);
-//		bc.setMPPRParallelism(10);
-//		config.setDefaultStreamClockFrequency(150);
+		BuildConfig bc = getBuildConfig();
+		bc.setBuildEffort(Effort.VERY_HIGH);
+		bc.setMPPRCostTableSearchRange(1, 15);
+		bc.setMPPRParallelism(15);
+		config.setDefaultStreamClockFrequency(200);
 
 	}
 
